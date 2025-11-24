@@ -8,7 +8,7 @@ import {
   Group,
   MessageStatus,
   User,
-  UserConnection,
+  //UserConnection,
 } from "../Components/types";
 import Loader from "../Components/Loader";
 

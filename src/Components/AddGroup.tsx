@@ -15,7 +15,7 @@ import {
   cropPhoto,
   dataURLToBlob,
   generateRandomColor,
-  getCurrentTime,
+  //getCurrentTime,
   getUniqueID,
 } from "./Utils";
 

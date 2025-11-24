@@ -4,7 +4,7 @@ import { UserPlusIcon, PlusIcon } from "@heroicons/react/20/solid";
 import supabase, { addUser, usernameExists } from "../supabase/Supabase";
 import { useSetRecoilState } from "recoil";
 import { globalLoaderAtom } from "../atoms/atom";
-import { User } from "./types";
+//import { User } from "./types";
 import { cropPhoto, dataURLToBlob } from "./Utils";
 
 // Import uuidv4 from 'uuid' package if available, else use crypto API

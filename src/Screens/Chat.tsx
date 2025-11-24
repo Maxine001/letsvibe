@@ -11,7 +11,7 @@ import {
 } from "../Components/types";
 import { getCurrentTime, getUniqueID } from "../Components/Utils";
 import { DB, DBStorage } from "../supabase/Supabase";
-import sentSound from "../assets/sent.mp3";
+//import sentSound from "../assets/sent.mp3";
 // import receivedSound from "../assets/received.mp3";
 import MessageBox from "../Components/Message";
 import TopProfileView from "../Components/TopProfileView";
@@ -84,6 +84,10 @@ export default function Chat({ classes }: { classes: string }) {
       messagesListRef.current.scrollTop = messagesListRef.current.scrollHeight;
     }
   };
+
+  useEffect(() => {
+    getCurrentUser();
+  }, []);
 
   useEffect(() => {
     let subscription = null;
@@ -237,6 +241,10 @@ export default function Chat({ classes }: { classes: string }) {
 
   const getCurrentUser = async () => {
     const currUserId = window.localStorage.getItem("chatapp-user-id");
+    if (!currUserId) {
+      setCurrentUser(undefined);
+      return;
+    }
     try {
       const { data, error } = await DB
         .from("users")
@@ -253,6 +261,7 @@ export default function Chat({ classes }: { classes: string }) {
       setCurrentUser(data);
     } catch (e) {
       console.error("Error fetching current user", e);
+      setCurrentUser(undefined);
     }
   };
 
