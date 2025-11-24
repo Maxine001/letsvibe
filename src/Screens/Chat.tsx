@@ -9,16 +9,6 @@ import {
   User,
   UserConnection,
 } from "../Components/types";
-import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  setDoc,
-  doc,
-  updateDoc,
-  getDoc,
-} from "firebase/firestore";
 import { getCurrentTime, getUniqueID } from "../Components/Utils";
 import { DB, DBStorage } from "../supabase/Supabase";
 import sentSound from "../assets/sent.mp3";
@@ -38,6 +28,7 @@ import ReactDOM from "react-dom";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 const queueMessages = new Queue();
+
 function FilePreview({ file, emptyFileDraft }: any) {
   return (
     <>
@@ -52,6 +43,7 @@ function FilePreview({ file, emptyFileDraft }: any) {
     </>
   );
 }
+
 function UnknownFileGraphic({ ext, size, name }: any) {
   if (Math.floor(Number(size)) > 0) {
     size = Math.round(Number(size) * 10) / 10 + " MB";
@@ -74,7 +66,8 @@ function UnknownFileGraphic({ ext, size, name }: any) {
     </>
   );
 }
-export default function Chat({ classes }: {classes: string}) {
+
+export default function Chat({ classes }: { classes: string }) {
   const [list, setList] = useRecoilState<Message[]>(chatMessagesAtom);
   const currentSideScreen = useRecoilValue<SideScreenSchema>(sideScreenAtom);
   const [currentUser, setCurrentUser] = useState<User>();
@@ -82,215 +75,193 @@ export default function Chat({ classes }: {classes: string}) {
   const [isLoading, setIsLoading] = useState(false);
   const [fileDetails, setFileDetails] = useState<FileDetails | null>(null);
   const [file, setFile] = useState<File | null>(null);
+
   const scrollListToBottom = () => {
     if (
-      list.length != 0 &&
-      messagesListRef.current.scrollHeight >
-        messagesListRef.current.clientHeight
+      list.length !== 0 &&
+      messagesListRef.current.scrollHeight > messagesListRef.current.clientHeight
     ) {
       messagesListRef.current.scrollTop = messagesListRef.current.scrollHeight;
     }
   };
-  // for latest snapshots. i.e., fetching new/latest messages from DB
-  useEffect(() => {
-    setIsLoading(true);
-    getCurrentUser();
-    const messagesRef = collection(DB, currentSideScreen.listId);
-    const q = query(messagesRef, orderBy("id"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const newMessagesList: Message[] = [];
-      snapshot.docChanges().forEach((change) => {
-        newMessagesList.push(change.doc.data() as Message);
-      });
-      // Update last msg and last updated in group doc
-      if (currentSideScreen.isGroup && newMessagesList.length > 0) {
-        getDoc(doc(DB, "groups", currentSideScreen.listId)).then((snapshot) => {
-          if (
-            newMessagesList.length == 1 &&
-            snapshot.data().lastMessage != newMessagesList[0].msg
-          ) {
-            updateDoc(doc(DB, "groups", currentSideScreen.listId), {
-              lastMessage: newMessagesList[0].msg,
-              lastUpdated: getUniqueID(),
-              lastUpdatedTime: getCurrentTime(),
-              lastMsgSenderId: newMessagesList[0].senderId,
-              lastMsgSenderName: newMessagesList[0].senderName,
-            });
-          }
-        });
-      } else {
-        const currUserRef = doc(
-          DB,
-          "users",
-          window.localStorage.getItem("chatapp-user-id") as string
-        );
-        getDoc(currUserRef).then((snapshot) => {
-          const connections: UserConnection[] = snapshot.data().connections;
-          const index = connections.findIndex(
-            (c) => c.userId == currentSideScreen.userId
-          );
-          if (newMessagesList.length > 0) {
-            connections[index].lastMessage =
-              newMessagesList[newMessagesList.length - 1].msg;
-            connections[index].lastUpdated = getUniqueID();
-            connections[index].lastMsgStatus =
-              newMessagesList[newMessagesList.length - 1].msgStatus;
-            connections[index].lastUpdatedTime = getCurrentTime();
-            connections[index].lastMsgSenderId =
-              newMessagesList[newMessagesList.length - 1].senderId;
-            connections[index].lastMsgSenderName =
-              newMessagesList[newMessagesList.length - 1].senderName;
-            updateDoc(currUserRef, {
-              connections: connections,
-            });
-          }
-        });
-        const userRef = doc(DB, "users", currentSideScreen.userId as string);
-        getDoc(userRef).then((snapshot) => {
-          const connections: UserConnection[] = snapshot.data().connections;
-          const index = connections.findIndex(
-            (c) =>
-              c.userId ==
-              (window.localStorage.getItem("chatapp-user-id") as string)
-          );
-          if (newMessagesList.length > 0) {
-            connections[index].lastMessage =
-              newMessagesList[newMessagesList.length - 1].msg;
-            connections[index].lastUpdated = getUniqueID();
-            connections[index].lastMsgStatus =
-              newMessagesList[newMessagesList.length - 1].msgStatus;
-            connections[index].lastUpdatedTime = getCurrentTime();
-            connections[index].lastMsgSenderId =
-              newMessagesList[newMessagesList.length - 1].senderId;
-            connections[index].lastMsgSenderName =
-              newMessagesList[newMessagesList.length - 1].senderName;
-            updateDoc(userRef, {
-              connections: connections,
-            });
-          }
-        });
-      }
-      let currentList: Message[];
-      setList((l) => {
-        currentList = JSON.parse(JSON.stringify(l));
-        return [...l];
-      });
-      newMessagesList.forEach((newMsg) => {
-        let index = currentList.findIndex((m) => m.id == newMsg.id);
-        if (index >= 0) {
-          // already present in the current list, so just update the status to SENT
-          if (newMsg.msgStatus == MessageStatus.WAITING) {
-            currentList[index].msgStatus = MessageStatus.SENT;
-            setList(currentList);
-            if (
-              newMsg.senderId ==
-              (window.localStorage.getItem("chatapp-user-id") as string)
-            ) {
-              new Audio(sentSound).play();
-            }
-            const docRef = doc(
-              DB,
-              currentSideScreen.listId,
-              newMsg.id.toString()
-            );
-            updateDoc(docRef, {
-              msgStatus: MessageStatus.SENT,
-            });
-          } else if (newMsg.msgStatus == MessageStatus.SEEN) {
-            currentList[index].msgStatus = MessageStatus.SEEN;
-            setList(currentList);
-          }
-        } else {
-          // new message from the opposite person, so push to current list and update the status to SEEN
-          // cuz RECEIVED is when the user is outside the Chat Screen
-          setList((l) => [...l, newMsg]);
-          // if (
-          //   !currentSideScreen.isGroup &&
-          //   newMsg.senderId !=
-          //     (window.localStorage.getItem("chatapp-user-id") as string)
-          // ) {
-          //   new Audio(receivedSound).play();
-          // }
-          if (
-            newMsg.senderId != window.localStorage.getItem("chatapp-user-id")
-          ) {
-            if (!currentSideScreen.isGroup) {
-              const docRef = doc(
-                DB,
-                currentSideScreen.listId,
-                newMsg.id.toString()
-              );
-              updateDoc(docRef, {
-                msgStatus: MessageStatus.SEEN,
-              });
-              const currUserRef = doc(
-                DB,
-                "users",
-                window.localStorage.getItem("chatapp-user-id") as string
-              );
-              getDoc(currUserRef).then((snapshot) => {
-                const connections: UserConnection[] =
-                  snapshot.data().connections;
-                const index = connections.findIndex(
-                  (c) => c.userId == currentSideScreen.userId
-                );
 
-                connections[index].lastMsgStatus = MessageStatus.SEEN;
-                updateDoc(currUserRef, {
-                  connections: connections,
-                });
-              });
-            } else {
-              const docRef = doc(DB, "groups", currentSideScreen.listId);
-              getDoc(docRef).then((snapshot) => {
-                const members: GroupMember[] = snapshot.data().members;
-                const index = members.findIndex(
-                  (m) =>
-                    m.userId ==
-                    (window.localStorage.getItem("chatapp-user-id") as string)
-                );
-                members[index].lastMsgStatus = MessageStatus.SEEN;
-                updateDoc(docRef, {
-                  members: members,
-                });
-                const index_2 = members.findIndex(
-                  (m) => m.lastMsgStatus != MessageStatus.SEEN
-                );
-                if (index_2 == -1) {
-                  updateDoc(
-                    doc(DB, currentSideScreen.listId, newMsg.id.toString()),
-                    {
-                      msgStatus: MessageStatus.SEEN,
-                    }
-                  );
-                }
-              });
+  useEffect(() => {
+    let subscription = null;
+    const fetchMessagesAndSubscribe = async () => {
+      if (!currentSideScreen.listId) {
+        setList([]);
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+
+      const chatFilterColumn = currentSideScreen.isGroup ? "group_id" : "chat_id";
+
+      // Fetch initial messages
+      const { data: initialMessages, error: fetchError } = await DB
+        .from("messages")
+        .select("*")
+        .eq(chatFilterColumn, currentSideScreen.listId)
+        .order("id", { ascending: true });
+
+      if (fetchError) {
+        console.error("Error fetching messages:", fetchError);
+        setIsLoading(false);
+        return;
+      }
+
+      setList(initialMessages || []);
+
+      // Setup realtime subscription for new messages
+      subscription = DB.channel('public:messages')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages', filter: `${chatFilterColumn}=eq.${currentSideScreen.listId}` },
+          (payload) => {
+            const newMsg = payload.new as Message;
+            setList((prevList) => {
+              // Avoid duplicates
+              if (prevList.find((m) => m.id === newMsg.id)) {
+                return prevList;
+              }
+              return [...prevList, newMsg];
+            });
+
+            if (
+              newMsg.senderId !== window.localStorage.getItem("chatapp-user-id")
+            ) {
+              if (!currentSideScreen.isGroup) {
+                updateMessageStatusSeen(newMsg);
+                updateUserConnectionsStatusSeen(currentSideScreen.userId);
+              } else {
+                updateGroupMessageStatusSeen(currentSideScreen.listId, newMsg);
+              }
             }
           }
-        }
-      });
-    });
-    setIsLoading(false);
-    // document.getElementById("chat-bottom-msg-input")?.focus();
+        )
+        .subscribe();
+
+      setIsLoading(false);
+    };
+
+    fetchMessagesAndSubscribe();
+
     return () => {
-      unsub();
+      if (subscription) {
+        DB.removeChannel(subscription);
+      }
     };
   }, [currentSideScreen]);
 
+  const updateMessageStatusSeen = async (message: Message) => {
+    try {
+      await DB
+        .from("messages")
+        .update({ msg_status: MessageStatus.SEEN })
+        .eq("id", message.id);
+    } catch (e) {
+      console.error("Failed to update message status seen", e);
+    }
+  };
+
+  const updateUserConnectionsStatusSeen = async (userId: string) => {
+    try {
+      const currUserId = window.localStorage.getItem("chatapp-user-id");
+      const { data: userData, error: userError } = await DB
+        .from("users")
+        .select("connections")
+        .eq("id", currUserId)
+        .maybeSingle();
+
+      if (userError || !userData) {
+        console.error("Failed to get user connections", userError);
+        return;
+      }
+      const connections: UserConnection[] = userData.connections || [];
+      const index = connections.findIndex(c => c.userId === userId);
+      if (index === -1) return;
+
+      connections[index].lastMsgStatus = MessageStatus.SEEN;
+
+      const { error: updateError } = await DB
+        .from("users")
+        .update({ connections: connections })
+        .eq("id", currUserId);
+
+      if (updateError) {
+        console.error("Failed to update user connections", updateError);
+      }
+    } catch (e) {
+      console.error("Error updating user connections status", e);
+    }
+  };
+
+  const updateGroupMessageStatusSeen = async (groupId: string, message: Message) => {
+    try {
+      const { data: group, error: groupError } = await DB
+        .from("groups")
+        .select("members")
+        .eq("id", groupId)
+        .maybeSingle();
+
+      if (groupError || !group) {
+        console.error("Failed to get group members", groupError);
+        return;
+      }
+      const members: GroupMember[] = group.members || [];
+      const currUserId = window.localStorage.getItem("chatapp-user-id");
+
+      const index = members.findIndex(m => m.userId === currUserId);
+      if (index === -1) return;
+
+      members[index].lastMsgStatus = MessageStatus.SEEN;
+
+      const indexNotSeen = members.findIndex(m => m.lastMsgStatus !== MessageStatus.SEEN);
+
+      await DB
+        .from("groups")
+        .update({ members: members })
+        .eq("id", groupId);
+
+      if (indexNotSeen === -1) {
+        // Update message's msg_status to SEEN when all members have seen it
+        await DB
+          .from("messages")
+          .update({ msg_status: MessageStatus.SEEN })
+          .eq("id", message.id);
+      }
+    } catch (e) {
+      console.error("Error updating group message status seen", e);
+    }
+  };
+
   const getCurrentUser = async () => {
-    const docRef = doc(
-      DB,
-      "users",
-      window.localStorage.getItem("chatapp-user-id") as string
-    );
-    const snapshot = await getDoc(docRef);
-    const user = snapshot.data() as User;
-    setCurrentUser(user);
+    const currUserId = window.localStorage.getItem("chatapp-user-id");
+    try {
+      const { data, error } = await DB
+        .from("users")
+        .select("*")
+        .eq("id", currUserId)
+        .maybeSingle();
+
+      if (error || !data) {
+        console.error("Failed to fetch current user", error);
+        setCurrentUser(undefined);
+        return;
+      }
+
+      setCurrentUser(data);
+    } catch (e) {
+      console.error("Error fetching current user", e);
+    }
   };
 
   const sendMsg = async (msg: string) => {
+    if (!currentUser) {
+      return;
+    }
     const id = getUniqueID();
-    let newMsg: Message = {
+      let newMsg: Message = {
       id: Number(id),
       msg: msg,
       msgStatus: MessageStatus.WAITING,
@@ -299,15 +270,20 @@ export default function Chat({ classes }: {classes: string}) {
       senderProfileImg: currentUser.profileImgUrl,
       time: getCurrentTime(),
       isFile: file != null && fileDetails != null,
+      chat_id: currentSideScreen.isGroup ? null : currentSideScreen.listId,
+      group_id: currentSideScreen.isGroup ? currentSideScreen.listId : null,
+      fileDetails: null,
     };
 
     if (newMsg.isFile && fileDetails != null && file != null) {
       newMsg.fileDetails = { ...fileDetails };
       setList((l) => [...l, newMsg]);
+
       // upload file and set url from blob to storage
       const storageRef = ref(DBStorage, "Files/" + fileDetails.name);
       await uploadBytes(storageRef, file);
       const fileUrl = await getDownloadURL(storageRef);
+
       newMsg = {
         ...newMsg,
         fileDetails: {
@@ -316,15 +292,11 @@ export default function Chat({ classes }: {classes: string}) {
         },
       };
     } else {
-      setList((l) => {
-        return [...l, newMsg];
-      });
+      setList((l) => [...l, newMsg]);
     }
 
     queueMessages.enqueue(newMsg);
-    setList((l) => {
-      return [...l];
-    });
+    setList((l) => [...l]);
     setFile(null);
     setFileDetails(null);
   };
@@ -332,27 +304,54 @@ export default function Chat({ classes }: {classes: string}) {
   useEffect(() => {
     const DBupdate = async () => {
       const msg = queueMessages.dequeue();
-      if (msg && msg != -1) {
-        await setDoc(doc(DB, currentSideScreen.listId, msg.id.toString()), msg);
-        if (currentSideScreen.isGroup) {
-          getDoc(doc(DB, "groups", currentSideScreen.listId)).then(
-            (snapshot) => {
-              const members: GroupMember[] = snapshot.data().members;
-              members.forEach((m) => {
-                if (
-                  m.userId !=
-                  (window.localStorage.getItem("chatapp-user-id") as string)
-                ) {
-                  m.lastMsgStatus = MessageStatus.SENT;
-                } else {
-                  m.lastMsgStatus = MessageStatus.SEEN;
-                }
-              });
-              updateDoc(doc(DB, "groups", currentSideScreen.listId), {
-                members: members,
-              });
+      if (msg && msg !== -1) {
+        try {
+          await DB.from("messages").insert([
+            {
+              id: msg.id,
+              msg: msg.msg,
+              msg_status: msg.msgStatus,
+              sender_id: msg.senderId,
+              sender_name: msg.senderName,
+              sender_profile_img: msg.senderProfileImg,
+              time: msg.time,
+              is_file: msg.isFile,
+              file_details: msg.fileDetails,
+          chat_id: msg.chat_id,
+          group_id: msg.group_id,
+            },
+          ]);
+          if (currentSideScreen.isGroup) {
+            try {
+              const { data: group, error: groupError } = await DB
+                .from("groups")
+                .select("members")
+                .eq("id", currentSideScreen.listId)
+                .maybeSingle();
+
+              if (!groupError && group) {
+                const members: GroupMember[] = group.members || [];
+                members.forEach((m) => {
+                  if (
+                    m.userId !==
+                    (window.localStorage.getItem("chatapp-user-id") as string)
+                  ) {
+                    m.lastMsgStatus = MessageStatus.SENT;
+                  } else {
+                    m.lastMsgStatus = MessageStatus.SEEN;
+                  }
+                });
+
+                await DB.from("groups")
+                  .update({ members: members })
+                  .eq("id", currentSideScreen.listId);
+              }
+            } catch (e) {
+              console.error("Error updating group members after message sent", e);
             }
-          );
+          }
+        } catch (e) {
+          console.error("Failed to insert message", e);
         }
       }
       if (!queueMessages.isEmpty()) {
@@ -362,6 +361,7 @@ export default function Chat({ classes }: {classes: string}) {
     scrollListToBottom();
     DBupdate();
   }, [list]);
+
   const inputFile = (e) => {
     const file: File = e.target.files[0];
     if (!file) {
@@ -456,7 +456,7 @@ export default function Chat({ classes }: {classes: string}) {
     >
       <TopProfileView />
       {isLoading && <Loader classes="absolute" />}
-      {list.length == 0 && (
+      {list.length === 0 && (
         <div className="text-lg opacity-30 flex items-end justify-center h-full select-none">
           <p>No messages to show</p>
         </div>
@@ -466,9 +466,7 @@ export default function Chat({ classes }: {classes: string}) {
           <MessageBox
             key={i}
             msgStatus={m.msgStatus}
-            isSender={
-              m.senderId == window.localStorage.getItem("chatapp-user-id")
-            }
+            isSender={m.senderId === window.localStorage.getItem("chatapp-user-id")}
             isGroup={currentSideScreen.isGroup}
             msgText={m.msg}
             senderName={m.senderName}

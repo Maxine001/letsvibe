@@ -20,6 +20,8 @@ export interface Message {
   time: string;
   isFile: boolean;
   fileDetails?: FileDetails;
+  chat_id?: string | null;
+  group_id?: string | null;
 }
 export class Queue {
   private list: Message[];

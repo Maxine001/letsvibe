@@ -7,28 +7,30 @@ import {
 } from "../atoms/atom";
 import { GroupMember, MessageStatus, SideScreenSchema, UserConnection } from "./types";
 import { getUniqueID } from "./Utils";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 // import notificationSound from "../assets/notification.mp3";
 import { StatusIndicator } from "./Message";
 
-export const getMemberColor = (chatId: string, senderId: string) => {
-  return new Promise((resolve, reject) => {
-    getDoc(doc(DB, "groups", chatId))
-      .then((snapshot) => {
-        const members: GroupMember[] = snapshot.data().members;
-        const index = members.findIndex((m) => m.userId == senderId);
-        if (index !== -1) {
-          resolve(members[index].color);
-        } else {
-          reject(new Error("Member not found"));
-        }
-      })
-      .catch((error) => {
-        reject(error);
-      });
-  });
+export const getMemberColor = async (chatId: string, senderId: string) => {
+  try {
+    const { data: members, error } = await DB
+      .from("group_members")
+      .select("*")
+      .eq("group_id", chatId);
+
+    if (error || !members) {
+      throw error || new Error("Group members not found");
+    }
+
+    const index = members.findIndex((m: GroupMember) => m.userId === senderId);
+    if (index === -1) {
+      throw new Error("Member not found");
+    }
+    return members[index].color;
+  } catch (error) {
+    throw error;
+  }
 };
 export default function ProfileBar({
   isGroup,
@@ -37,7 +39,7 @@ export default function ProfileBar({
   id,
   chatId,
   status,
-  isOnline=false,
+  isOnline = false,
   lastMsgStatus,
   lastMsg,
   lastUpdatedTime,
@@ -54,33 +56,43 @@ export default function ProfileBar({
   useEffect(() => {
     if (
       isGroup &&
-      lastMsgSenderId !==
-        window.localStorage.getItem("chatapp-user-id").toString()
+      lastMsgSenderId &&
+      chatId &&
+      lastMsgSenderId !== window.localStorage.getItem("chatapp-user-id")?.toString()
     ) {
+      let isMounted = true;
       getMemberColor(chatId, lastMsgSenderId)
         .then((clr) => {
-          setColor(clr as string);
+          if (isMounted) setColor(clr as string);
         })
         .catch((e) => {
           console.log(e);
         });
+      return () => {
+        isMounted = false;
+      };
     }
-  }, [lastMsg]);
-  const openChat = () => {
-    if (currentSideScreen.listId == chatId) {
+  }, [lastMsg, chatId, lastMsgSenderId, isGroup]);
+
+  const openChat = async () => {
+    if (currentSideScreen.listId === chatId) {
       return;
     }
-    if (isGroup == false && chatId == null) {
-      const currUserRef = doc(
-        DB,
-        "users",
-        window.localStorage.getItem("chatapp-user-id") as string
-      );
-      const userRef = doc(DB, "users", id);
+    if (isGroup === false && chatId == null) {
+      const currUserId = window.localStorage.getItem("chatapp-user-id") as string;
       chatId = getUniqueID();
-      getDoc(currUserRef).then((snapshot) => {
-        const existingConnections: UserConnection[] =
-          snapshot.data().connections;
+
+      try {
+        const { data: currUserData, error: currUserError } = await DB
+          .from("users")
+          .select("connections")
+          .eq("id", currUserId)
+          .maybeSingle();
+
+        if (currUserError) throw currUserError;
+
+        const existingConnections: UserConnection[] = currUserData?.connections ?? [];
+
         existingConnections.push({
           userId: id,
           chatId: chatId,
@@ -91,15 +103,26 @@ export default function ProfileBar({
           lastMsgSenderId: "",
           lastMsgSenderName: "",
         });
-        updateDoc(currUserRef, {
-          connections: existingConnections,
-        });
-      });
-      getDoc(userRef).then((snapshot) => {
-        const existingConnections: UserConnection[] =
-          snapshot.data().connections;
-        existingConnections.push({
-          userId: window.localStorage.getItem("chatapp-user-id") as string,
+
+        const { error: updateCurrUserError } = await DB
+          .from("users")
+          .update({ connections: existingConnections })
+          .eq("id", currUserId);
+
+        if (updateCurrUserError) throw updateCurrUserError;
+
+        const { data: userData, error: userError } = await DB
+          .from("users")
+          .select("connections")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (userError) throw userError;
+
+        const userExistingConnections: UserConnection[] = userData?.connections ?? [];
+
+        userExistingConnections.push({
+          userId: currUserId,
           chatId: chatId,
           lastMessage: "",
           lastUpdated: getUniqueID(),
@@ -108,26 +131,31 @@ export default function ProfileBar({
           lastMsgSenderId: "",
           lastMsgSenderName: "",
         });
-        updateDoc(userRef, {
-          connections: existingConnections,
-        });
-      });
-    }
-    setChatMessagesList([]);
-    setCurrentSideScreen(curr => {
-      return {
-        ...curr,
-        listId: chatId,
-        isGroup: isGroup,
-        name: name,
-        imageUrl: imageUrl,
-        userId: isGroup ? "" : id,
-        status: status,
-        isOnline: isOnline
-    }
-  });
 
-    //for mobile view
+        const { error: updateUserError } = await DB
+          .from("users")
+          .update({ connections: userExistingConnections })
+          .eq("id", id);
+
+        if (updateUserError) throw updateUserError;
+      } catch (e) {
+        console.error("Error updating user connections:", e);
+      }
+    }
+
+    setChatMessagesList([]);
+    setCurrentSideScreen(curr => ({
+      ...curr,
+      listId: chatId,
+      isGroup: isGroup,
+      name: name,
+      imageUrl: imageUrl,
+      userId: isGroup ? "" : id,
+      status: status,
+      isOnline: isOnline
+    }));
+
+    // for mobile view
     setIsSideScreenActive(true);
   };
   return (
