@@ -25,9 +25,10 @@ export default function ChatsList({ classes }: any) {
     const currUser = window.localStorage.getItem("chatapp-user-id");
 
       const fetchGroups = async () => {
+        // Fetch groups and related group_members data
         const { data, error } = await supabase
           .from("groups")
-          .select("*")
+          .select("*, group_members(*)")
           .order("last_updated", { ascending: false });
 
         if (error) {
@@ -35,12 +36,25 @@ export default function ChatsList({ classes }: any) {
           return;
         }
 
+        // Map group_members to members with camelCase keys
+        const groupsWithMembers = data.map((g: any) => {
+          const members = (g.group_members || []).map((m: any) => ({
+            userId: m.user_id,
+            lastMsgStatus: m.last_msg_status,
+            color: m.color,
+          }));
+          return {
+            ...g,
+            members: members,
+          };
+        });
+
         if (!currUser) {
           setGroups([]);
           return;
         }
 
-        const filteredGroups = data.filter(g =>
+        const filteredGroups = groupsWithMembers.filter(g =>
           Array.isArray(g.members) && g.members.some(m => m.userId === currUser)
         );
         setGroups(filteredGroups);
@@ -204,7 +218,7 @@ const fetchUsersAndCurrentUser = async () => {
         </button>
       </div>
       <div className="flex flex-col overflow-auto h-full">
-        {users.length > 0 && groups.length > 0 && (
+        {groups.length > 0 && (
           <div className="border-white border-b-2 mx-5 opacity-50 text-lg">
             <p className="ml-1">Groups</p>
           </div>
@@ -240,7 +254,7 @@ const fetchUsersAndCurrentUser = async () => {
             lastMsgSenderName={g.lastMsgSenderName}
           />
         ))}
-        {users.length > 0 && groups.length > 0 && (
+        {users.length > 0 && (
           <div className="border-white border-b-2 mx-5 opacity-50 text-lg">
             <p className="ml-1">Users</p>
           </div>
