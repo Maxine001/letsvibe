@@ -1,0 +1,27 @@
+const { data, error } = await supabase
+    .from('users')
+    .insert([
+      {
+        id: user.id,  // added id here
+        name: user.name,
+        status: user.status,
+        profile_img_url: user.profileImgUrl || '',
+        connections: user.connections || [],
+        is_online: user.isOnline || false,
+      }
+    ])
+=======
+export async function addUser(user) {
+  const { data, error } = await supabase
+    .from('users')
+    .insert([
+      {
+        id: user.id,  // added id here
+        name: user.name,
+        status: user.status,
+        profile_img_url: user.profileImgUrl || '',
+        connections: user.connections || [],
+        is_online: user.isOnline || false,
+      }
+    ])
+    .select()

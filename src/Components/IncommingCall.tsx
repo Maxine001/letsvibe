@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { IncommingCall as IncommingCallType, SideScreenSchema, User } from './types'
 import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { DB } from '../firestore/firestore';
+import { DB } from '../supabase/Supabase';
 import { PhoneIcon, UserCircleIcon } from '@heroicons/react/20/solid';
 import { useSetRecoilState } from 'recoil';
 import { defaultSideScreenValue, globalLoaderAtom, isSideScreenActiveAtom, sideScreenAtom } from '../atoms/atom';

@@ -10,7 +10,7 @@ import { defaultSideScreenValue, isSideScreenActiveAtom, sideScreenAtom } from "
 import { CallType, SideScreenSchema, User } from "./types";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { DB } from "../firestore/firestore";
+import { DB } from "../supabase/Supabase";
 
 export default function TopProfileView() {
   const setIsSideScreenActive = useSetRecoilState(isSideScreenActiveAtom);

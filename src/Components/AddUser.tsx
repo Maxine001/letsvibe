@@ -1,20 +1,36 @@
 import { useState } from "react";
 import Input from "./Input";
 import { UserPlusIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { DB, DBStorage } from "../firestore/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import supabase, { addUser, usernameExists } from "../supabase/Supabase";
 import { useSetRecoilState } from "recoil";
 import { globalLoaderAtom } from "../atoms/atom";
 import { User } from "./types";
 import { cropPhoto, dataURLToBlob } from "./Utils";
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  setDoc,
-  where,
-} from "firebase/firestore";
+
+// Import uuidv4 from 'uuid' package if available, else use crypto API
+function generateUUID() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // fallback for older browsers
+  function s4() {
+    return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+  }
+  return (
+    s4() +
+    s4() +
+    "-" +
+    s4() +
+    "-" +
+    s4() +
+    "-" +
+    s4() +
+    "-" +
+    s4() +
+    s4() +
+    s4()
+  );
+}
 
 export function AddPhoto(props: any) {
   return (
@@ -52,46 +68,73 @@ export default function AddUser() {
       setCroppedPhoto(croppedPhotoSrc);
     });
   };
-  const addUser = async () => {
-    // ensure the presence of data
+
+  // Upload photo to Supabase storage bucket 'public'
+  const uploadPhoto = async (file) => {
+    if (!file) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${username}-${Date.now()}.${fileExt}`;
+    const filePath = `Profile_Images/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('public')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { publicURL, error: urlError } = supabase.storage
+      .from('public')
+      .getPublicUrl(filePath);
+
+    if (urlError) {
+      throw urlError;
+    }
+
+    return publicURL;
+  };
+
+  const addUserHandler = async () => {
     if (!username || !status) {
       alert("username and status fields are mandatory");
       return;
     }
     setIsLoading(true);
     try {
-      // check if username already exists
-      const collectionRef = collection(DB, "users");
-      const q = query(collectionRef, where("name", "==", username));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
+      const exists = await usernameExists(username);
+      if (exists) {
         setIsLoading(false);
         alert("username already exists");
         return;
       }
-      // upload the profile image (if added) and get download URL
+      // Upload photo if any
       let photoUrl = "";
       if (photo) {
-        const storageRef = ref(DBStorage, "Profile_Images/" + photo.name);
-        await uploadBytes(storageRef, photo);
-        photoUrl = await getDownloadURL(storageRef);
+        photoUrl = await uploadPhoto(photo);
       }
-      // get a doc reference for new user
-      const newDocRef = doc(collection(DB, "users"));
-      // create a new user
-      const newUser: User = {
-        id: newDocRef.id,
+
+      // generate id here
+      const id = generateUUID();
+
+      const newUser = {
+        id,
         name: username,
         status: status,
-        profileImgUrl: photoUrl,
+        profileImgUrl: photoUrl || '',
         connections: [],
         isOnline: false,
       };
-      // upload the user data
-      await setDoc(newDocRef, newUser);
 
-      // save the user-id into local storage
-      window.localStorage.setItem("chatapp-user-id", newDocRef.id);
+      const insertedUsers = await addUser(newUser);
+      const insertedUserId = insertedUsers?.[0]?.id;
+
+      if (!insertedUserId) {
+        alert("Error: User ID could not be retrieved after insertion.");
+        setIsLoading(false);
+        return;
+      }
+      window.localStorage.setItem("chatapp-user-id", insertedUserId);
       window.location.reload();
     } catch (e) {
       alert("There was an Error");
@@ -100,6 +143,7 @@ export default function AddUser() {
       setIsLoading(false);
     }
   };
+
   return (
     <>
       <div className="bg-black w-screen h-screen absolute bg-opacity-80 flex items-center justify-center z-10">
@@ -127,7 +171,7 @@ export default function AddUser() {
               <div className="flex gap-5 mt-3">
                 <button
                   className="rounded-xl border-none bg-primary text-white py-2 pl-3 pr-5 flex items-center text-lg"
-                  onClick={addUser}
+                  onClick={addUserHandler}
                 >
                   <PlusIcon className="h-8 pr-1" />
                   Add

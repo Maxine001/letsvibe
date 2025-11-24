@@ -24,7 +24,7 @@ import {
   Unsubscribe,
   updateDoc,
 } from "firebase/firestore";
-import { DB } from "../firestore/firestore";
+import { DB } from "../supabase/Supabase";
 import { createRoom, deleteRoom, joinRoom } from "../Components/Utils";
 
 export default function Call({ classes }: { classes: string }) {

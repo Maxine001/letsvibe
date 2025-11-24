@@ -20,7 +20,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { getCurrentTime, getUniqueID } from "../Components/Utils";
-import { DB, DBStorage } from "../firestore/firestore";
+import { DB, DBStorage } from "../supabase/Supabase";
 import sentSound from "../assets/sent.mp3";
 // import receivedSound from "../assets/received.mp3";
 import MessageBox from "../Components/Message";

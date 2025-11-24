@@ -1,5 +1,5 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
-import { DB } from "../firestore/firestore";
+import { DB } from "../supabase/Supabase";
 import { Room } from "./types";
 
 export const getUniqueID = () => {

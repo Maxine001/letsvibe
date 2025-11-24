@@ -8,8 +8,7 @@ import { globalLoaderAtom } from "./atoms/atom";
 import { sideScreenAtom } from "./atoms/atom";
 import { SideScreenSchema, User } from "./Components/types";
 import { isSideScreenActiveAtom } from "./atoms/atom";
-import { doc, getDoc, onSnapshot, Unsubscribe, updateDoc } from "firebase/firestore";
-import { DB } from "./firestore/firestore";
+import { DB } from "./supabase/Supabase";
 import { useEffect, useState } from "react";
 import Call from "./Screens/Call";
 import IncommingCall from "./Components/IncommingCall";
@@ -29,56 +28,83 @@ export default function App() {
   const [isUser, setIsUser] = useState<boolean>();
   const [currentUser, setCurrentUser] = useState<User | null>(null)
 
-  useEffect(() => {
-    let unsubUser: Unsubscribe;
+    useEffect(() => {
+    let subscription: any; // To hold realtime subscription
     const checkUserExists = async () => {
       const userId = window.localStorage.getItem("chatapp-user-id") as string;
       if (userId == null) {
         setIsUser(false);
         return;
       }
-      const snapshot = await getDoc(doc(DB, "users", userId));
-      if (snapshot.exists()) {
-        setIsUser(true);
-        unsubUser = onSnapshot(doc(DB, "users", window.localStorage.getItem("chatapp-user-id")), (doc)=>{
-          if(doc.exists()){
-            const user = doc.data() as User;
-            setCurrentUser(user);
-          }
-        });
-        const setOnlineStatus = async () => {
-          try {
-            await updateDoc(doc(DB, 'users', userId), { isOnline: true });
-          } catch (error) {
-            console.error('Error setting online status:', error);
-          }
-        };
-        const setOfflineStatus = async () => {
-          try {
-            await updateDoc(doc(DB, 'users', userId), { isOnline: false });
-          } catch (error) {
-            console.error('Error setting offline status:', error);
-          }
-        };
-    
-        // Set the user status to 'online' when the component mounts
-        setOnlineStatus();
-        // Set the user status to 'offline' when the component unmounts
-        window.addEventListener("beforeunload", setOfflineStatus);
-        window.addEventListener("offline", setOfflineStatus)
-        return () => {
-          window.removeEventListener("beforeunload", setOfflineStatus)
-          window.removeEventListener("offline", setOfflineStatus);
-        };
-    
-      } else {
+
+      // Fetch user from supabase
+      let { data: userData, error } = await DB
+        .from("users")
+        .select("*")
+        .eq("id", userId)
+        .single();
+
+      if (error || !userData) {
         setIsUser(false);
+        return;
+      }
+
+      setIsUser(true);
+      setCurrentUser(userData as User);
+
+      // Subscribe to realtime updates for the user - Supabase v2 syntax
+      subscription = DB.channel(`public:users:id=eq.${userId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${userId}` },
+          (payload) => {
+            if (payload.new) {
+              setCurrentUser(payload.new as User);
+            }
+          }
+        )
+        .subscribe();
+
+      // Function to set online status
+      const setOnlineStatus = async () => {
+        await DB
+          .from("users")
+          .update({ is_online: true })
+          .eq("id", userId);
+      };
+
+      // Function to set offline status
+      const setOfflineStatus = async () => {
+        await DB
+          .from("users")
+          .update({ is_online: false })
+          .eq("id", userId);
+      };
+
+      // Set online on mount
+      setOnlineStatus();
+
+      // Set offline handlers on unload and offline events
+      window.addEventListener("beforeunload", setOfflineStatus);
+      window.addEventListener("offline", setOfflineStatus);
+
+      return () => {
+        window.removeEventListener("beforeunload", setOfflineStatus);
+        window.removeEventListener("offline", setOfflineStatus);
+        if (subscription) {
+          subscription.unsubscribe();
+        }
+      };
+    };
+
+    checkUserExists();
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
       }
     };
-    checkUserExists();
-    return()=>{
-      if(unsubUser) unsubUser();
-    }
   }, []);
 
   return (

@@ -9,17 +9,7 @@ import { AddPhoto, Photo } from "./AddUser";
 import { useEffect, useState } from "react";
 import { globalLoaderAtom } from "../atoms/atom";
 import { useSetRecoilState } from "recoil";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  setDoc,
-  orderBy,
-} from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { DB, DBStorage } from "../firestore/firestore";
+import supabase from "../supabase/Supabase";
 import { Group, GroupMember, MessageStatus, User } from "./types";
 import {
   cropPhoto,
@@ -55,41 +45,66 @@ export default function AddGroup({ onClose }: any) {
     });
   };
   const addGroup = async () => {
-    // ensure the presence of data
     if (!groupname) {
       alert("Group name field are mandatory");
       return;
     }
-    if (selectedUsers.length == 0) {
-      alert("Select atleast one user for group.");
+    if (selectedUsers.length === 0) {
+      alert("Select at least one user for group.");
       return;
     }
+    
     setIsLoading(true);
     try {
-      // check if groupname already exists
-      const collectionRef = collection(DB, "groups");
-      const q = query(collectionRef, where("name", "==", groupname));
-      const docs = await getDocs(q);
-      if (!docs.empty) {
+      // Check if group name already exists
+      const { data: existingGroups, error } = await supabase
+        .from('groups')
+        .select('id')
+        .eq('name', groupname)
+        .limit(1);
+      
+      if (error) {
+        throw error;
+      }
+
+      if (existingGroups.length > 0) {
         setIsLoading(false);
-        alert("groupname already exists");
+        alert("Group name already exists");
         return;
       }
-      // upload the group image (if added) and get the download URL
+
+      // Upload group image if added
       let photoUrl = "";
       if (photo) {
-        const storageRef = ref(DBStorage, "Group_Images/" + photo.name);
-        await uploadBytes(storageRef, photo);
-        photoUrl = await getDownloadURL(storageRef);
+        const fileExt = photo.name.split('.').pop();
+        const fileName = `${groupname}-${Date.now()}.${fileExt}`;
+        const filePath = `Group_Images/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('public')
+          .upload(filePath, photo);
+        
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { publicURL, error: urlError } = supabase.storage
+          .from('public')
+          .getPublicUrl(filePath);
+        
+        if (urlError) {
+          throw urlError;
+        }
+
+        photoUrl = publicURL;
       }
-      // get a doc reference for new group
-      const newDocRef = doc(collection(DB, "groups"));
-      // create a new group
+
+      // Create new group object
       const newGroup: Group = {
-        id: newDocRef.id,
+        id: getUniqueID(),
         name: groupname,
-        groupImgUrl: photoUrl,
-        lastUpdated: getUniqueID(),
+        groupImgUrl: photoUrl || '',
+        lastUpdated: new Date().toISOString(),
         members: [
           {
             userId: window.localStorage.getItem("chatapp-user-id") as string,
@@ -99,12 +114,48 @@ export default function AddGroup({ onClose }: any) {
           ...selectedUsers,
         ],
         lastMessage: "",
-        lastUpdatedTime: getCurrentTime(),
+        lastUpdatedTime: new Date().toISOString(),
         lastMsgSenderId: "",
         lastMsgSenderName: "",
       };
-      // upload the group data
-      await setDoc(newDocRef, newGroup);
+
+      // Map camelCase Group object to snake_case for DB insert (without members)
+      const insertGroup: any = {
+        id: newGroup.id,
+        name: newGroup.name,
+        group_img_url: newGroup.groupImgUrl,
+        last_updated: newGroup.lastUpdated,
+        last_message: newGroup.lastMessage,
+        last_updated_time: newGroup.lastUpdatedTime,
+        last_msg_sender_id: newGroup.lastMsgSenderId,
+        last_msg_sender_name: newGroup.lastMsgSenderName,
+      };
+
+      // Insert new group into Supabase
+      const { error: insertError } = await supabase
+        .from('groups')
+        .insert([insertGroup]);
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      // Insert members into group_members table
+      const groupMembersInsert = newGroup.members.map((member) => ({
+        group_id: newGroup.id,
+        user_id: member.userId,
+        last_msg_status: member.lastMsgStatus,
+        color: member.color,
+      }));
+      
+      const { error: insertMembersError } = await supabase
+        .from('group_members')
+        .insert(groupMembersInsert);
+
+      if (insertMembersError) {
+        throw insertMembersError;
+      }
+
       onClose();
       window.location.reload();
     } catch (e) {
@@ -132,19 +183,26 @@ export default function AddGroup({ onClose }: any) {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      const q = query(collection(DB, "users"), orderBy("name", "asc"));
-      const snapshot = await getDocs(q);
-      const users: User[] = [];
-      snapshot.forEach((doc) => {
-        if (window.localStorage.getItem("chatapp-user-id") != doc.data().id) {
-          users.push(doc.data() as User);
-        }
-      });
-      setUsersList(users);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setUsersList([]);
+        return;
+      }
+
+      const filteredUsers = data.filter(
+        (u) => u.id !== window.localStorage.getItem("chatapp-user-id")
+      );
+
+      setUsersList(filteredUsers);
     };
     fetchUsers();
 
-    document.addEventListener("click", (e) => {
+    const clickListener = (e: Event) => {
       const usersListDiv = document.querySelectorAll(".users-list");
       const docArea = e.target as Node;
       let isInside = false;
@@ -155,9 +213,15 @@ export default function AddGroup({ onClose }: any) {
       });
       if (!isInside) {
         toggleDropDown(false);
-        document.removeEventListener("click", () => {});
+        document.removeEventListener("click", clickListener);
       }
-    });
+    };
+
+    document.addEventListener("click", clickListener);
+
+    return () => {
+      document.removeEventListener("click", clickListener);
+    };
   }, []);
   return (
     <div

@@ -2,17 +2,8 @@ import ProfileBar from "../Components/ProfileBar";
 import Input from "../Components/Input";
 import AddGroup from "../Components/AddGroup";
 import { useEffect, useState } from "react";
-import { PlusIcon } from "@heroicons/react/20/solid";
-import { UserGroupIcon, UserCircleIcon } from "@heroicons/react/20/solid";
-import {
-  collection,
-  doc,
-  getDoc,
-  onSnapshot,
-  orderBy,
-  query,
-} from "firebase/firestore";
-import { DB } from "../firestore/firestore";
+import { PlusIcon, UserGroupIcon, UserCircleIcon } from "@heroicons/react/20/solid";
+import supabase from "../supabase/Supabase";
 import {
   Group,
   MessageStatus,
@@ -32,55 +23,129 @@ export default function ChatsList({ classes }: any) {
   useEffect(() => {
     setIsLoading(true);
     const currUser = window.localStorage.getItem("chatapp-user-id");
-    const q1 = query(collection(DB, "groups"), orderBy("lastUpdated", "desc"));
-    const unsubGroups = onSnapshot(q1, (snapshot) => {
-      const chats: Group[] = [];
-      snapshot.docs.forEach((doc) => {
-        if (
-          currUser != null &&
-          doc.data().members.findIndex((m) => m.userId == currUser) >= 0
-        ) {
-          chats.push(doc.data() as Group);
-          chats.reduce;
+
+      const fetchGroups = async () => {
+        const { data, error } = await supabase
+          .from("groups")
+          .select("*")
+          .order("last_updated", { ascending: false });
+
+        if (error) {
+          console.error(error);
+          return;
         }
-      });
-      setGroups(chats);
-    });
-    const q2 = query(collection(DB, "users"));
-    let connections: UserConnection[];
-    if (currUser != null) {
-      getDoc(doc(DB, "users", currUser)).then((snap) => {
-        connections = snap.data()?.connections;
-      });
+
+        if (!currUser) {
+          setGroups([]);
+          return;
+        }
+
+        const filteredGroups = data.filter(g =>
+          Array.isArray(g.members) && g.members.some(m => m.userId === currUser)
+        );
+        setGroups(filteredGroups);
+      };
+
+const fetchUsersAndCurrentUser = async () => {
+  if (!currUser || typeof currUser !== "string" || currUser.trim() === "") {
+    console.warn("Invalid currUser in localStorage:", currUser);
+    setUsers([]);
+    setCurrentUser(undefined);
+    window.localStorage.removeItem("chatapp-user-id");
+    return;
+  }
+
+  const trimmedCurrUser = currUser.trim();
+
+  // Regex for UUID v4 format (typical supabase id) or alphanumeric ids
+  const validIdRegex =
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$|^[a-zA-Z0-9_-]{10,}$/;
+
+  if (!validIdRegex.test(trimmedCurrUser)) {
+    console.warn(
+      "User id in localStorage is invalid format and will be removed:",
+      trimmedCurrUser
+    );
+    setUsers([]);
+    setCurrentUser(undefined);
+    window.localStorage.removeItem("chatapp-user-id");
+    return;
+  }
+
+  let userData = null;
+  let userError = null;
+
+  try {
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", trimmedCurrUser)
+      .maybeSingle();
+
+    userData = data;
+    userError = error;
+  } catch (err) {
+    userError = err;
+  }
+
+  if (userError) {
+    if (userError.code === "PGRST116" || userError.status === 406) {
+      // Handle PostgreSQL error code for zero rows or 406 Not Acceptable gracefully
+      console.warn(
+        "User query returned zero rows or 406 for id:",
+        trimmedCurrUser,
+        userError.message || userError
+      );
+      setCurrentUser(undefined);
+      setUsers([]);
+      window.localStorage.removeItem("chatapp-user-id");
+      return;
     }
-    const unsubChats = onSnapshot(q2, (snapshot) => {
-      let chats: User[] = [];
-      snapshot.docs.forEach((doc) => {
-        if (currUser != null && doc.data().id != currUser) {
-          chats.push(doc.data() as User);
-        } else if (doc.data().id == currUser) {
-          setCurrentUser(doc.data() as User);
-        }
-      });
-      // Sort users based on the lastUpdated field within their connections
-      chats.sort((a, b) => {
-        const lastUpdatedA = connections.find(
-          (connection) => connection.userId === a.id
-        )?.lastUpdated;
-        const lastUpdatedB = connections.find(
-          (connection) => connection.userId === b.id
-        )?.lastUpdated;
-        // Sort in descending order (latest first)
-        return Number(lastUpdatedB) - Number(lastUpdatedA);
-      });
-      setUsers(chats);
-    });
+    console.error(userError);
+    setCurrentUser(undefined);
+    setUsers([]);
+    window.localStorage.removeItem("chatapp-user-id");
+    return;
+  }
+  if (!userData) {
+    console.warn("No user found with id:", trimmedCurrUser);
+    setCurrentUser(undefined);
+    setUsers([]);
+    window.localStorage.removeItem("chatapp-user-id");
+    return;
+  }
+
+  setCurrentUser(userData);
+
+  const { data: usersData, error: usersError } = await supabase
+    .from("users")
+    .select("*")
+    .neq("id", trimmedCurrUser);
+
+  if (usersError) {
+    console.error(usersError);
+    setUsers([]);
+    return;
+  }
+
+  const connections = userData.connections || [];
+  const sortedUsers = usersData.sort((a, b) => {
+    const lastUpdatedA =
+      connections.find((c) => c.userId === a.id)?.lastUpdated || 0;
+    const lastUpdatedB =
+      connections.find((c) => c.userId === b.id)?.lastUpdated || 0;
+    return lastUpdatedB - lastUpdatedA;
+  });
+
+  setUsers(sortedUsers);
+};
+
+    fetchGroups();
+    fetchUsersAndCurrentUser();
+
     setIsLoading(false);
-    return () => {
-      unsubGroups();
-      unsubChats();
-    };
   }, []);
+
   const filteredGroups = () => {
     if (searchString) {
       return groups.filter((g) =>
@@ -89,6 +154,7 @@ export default function ChatsList({ classes }: any) {
     }
     return groups;
   };
+
   const filteredUsers = () => {
     if (searchString) {
       return users.filter((u) =>
@@ -97,6 +163,7 @@ export default function ChatsList({ classes }: any) {
     }
     return users;
   };
+
   return (
     <div className={"flex flex-col h-screen relative" + " " + classes}>
       {isAddGroupClicked && (
@@ -108,7 +175,7 @@ export default function ChatsList({ classes }: any) {
       )}
       {isLoading && <Loader classes="absolute" />}
       <div className="flex gap-3 p-3 sticky top-0 bg-secondary">
-        {currentUser && currentUser.profileImgUrl? (
+        {currentUser && currentUser.profileImgUrl ? (
           <img src={currentUser.profileImgUrl} className="h-14 rounded-full" />
         ) : (
           <div>

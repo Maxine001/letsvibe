@@ -4,7 +4,7 @@ import clockIcon from "../assets/clock.png";
 import { UserCircleIcon, ArrowDownTrayIcon } from "@heroicons/react/20/solid";
 import { FileType, GroupMember, MessageStatus } from "./types";
 import { doc, getDoc } from "firebase/firestore";
-import { DB } from "../firestore/firestore";
+import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 import fileIcon from "../assets/file.png";
 import { downlaodFile } from "./Utils";

@@ -8,7 +8,7 @@ import {
 import { GroupMember, MessageStatus, SideScreenSchema, UserConnection } from "./types";
 import { getUniqueID } from "./Utils";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { DB } from "../firestore/firestore";
+import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 // import notificationSound from "../assets/notification.mp3";
 import { StatusIndicator } from "./Message";
