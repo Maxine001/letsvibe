@@ -9,7 +9,7 @@ import {
   User,
   UserConnection,
 } from "../Components/types";
-import { getCurrentTime, getUniqueID } from "../Components/Utils";
+import { getUniqueID } from "../Components/Utils";
 import { DB, DBStorage } from "../supabase/Supabase";
 //import sentSound from "../assets/sent.mp3";
 // import receivedSound from "../assets/received.mp3";
@@ -277,7 +277,7 @@ export default function Chat({ classes }: { classes: string }) {
       senderId: window.localStorage.getItem("chatapp-user-id") as string,
       senderName: currentUser.name,
       senderProfileImg: currentUser.profileImgUrl,
-      time: getCurrentTime(),
+      time: new Date().toISOString(),
       isFile: file != null && fileDetails != null,
       chat_id: currentSideScreen.isGroup ? null : currentSideScreen.listId,
       group_id: currentSideScreen.isGroup ? currentSideScreen.listId : null,
@@ -314,54 +314,58 @@ export default function Chat({ classes }: { classes: string }) {
     const DBupdate = async () => {
       const msg = queueMessages.dequeue();
       if (msg && msg !== -1) {
-        try {
-          await DB.from("messages").insert([
-            {
-              id: msg.id,
-              msg: msg.msg,
-              msg_status: msg.msgStatus,
-              sender_id: msg.senderId,
-              sender_name: msg.senderName,
-              sender_profile_img: msg.senderProfileImg,
-              time: msg.time,
-              is_file: msg.isFile,
-              file_details: msg.fileDetails,
-          chat_id: msg.chat_id,
-          group_id: msg.group_id,
-            },
-          ]);
-          if (currentSideScreen.isGroup) {
-            try {
-              const { data: group, error: groupError } = await DB
-                .from("groups")
-                .select("members")
-                .eq("id", currentSideScreen.listId)
-                .maybeSingle();
+      try {
+        const { error } = await DB.from("messages").insert([
+          {
+            // id: msg.id,  // removed to let DB auto generate the id
+            msg: msg.msg,
+            msg_status: msg.msgStatus,
+            sender_id: msg.senderId,
+            sender_name: msg.senderName,
+            sender_profile_img: msg.senderProfileImg,
+            time: msg.time,
+            is_file: msg.isFile,
+            file_details: msg.fileDetails,
+            chat_id: msg.chat_id,
+            group_id: msg.group_id,
+          },
+        ]);
 
-              if (!groupError && group) {
-                const members: GroupMember[] = group.members || [];
-                members.forEach((m) => {
-                  if (
-                    m.userId !==
-                    (window.localStorage.getItem("chatapp-user-id") as string)
-                  ) {
-                    m.lastMsgStatus = MessageStatus.SENT;
-                  } else {
-                    m.lastMsgStatus = MessageStatus.SEEN;
-                  }
-                });
+        if (error) {
+          console.error("Supabase insert message error:", error);
+          // Additional handling or retry logic could be placed here
+        } else if (currentSideScreen.isGroup) {
+          try {
+            const { data: group, error: groupError } = await DB
+              .from("groups")
+              .select("members")
+              .eq("id", currentSideScreen.listId)
+              .maybeSingle();
 
-                await DB.from("groups")
-                  .update({ members: members })
-                  .eq("id", currentSideScreen.listId);
-              }
-            } catch (e) {
-              console.error("Error updating group members after message sent", e);
+            if (!groupError && group) {
+              const members: GroupMember[] = group.members || [];
+              members.forEach((m) => {
+                if (
+                  m.userId !==
+                  (window.localStorage.getItem("chatapp-user-id") as string)
+                ) {
+                  m.lastMsgStatus = MessageStatus.SENT;
+                } else {
+                  m.lastMsgStatus = MessageStatus.SEEN;
+                }
+              });
+
+              await DB.from("groups")
+                .update({ members: members })
+                .eq("id", currentSideScreen.listId);
             }
+          } catch (e) {
+            console.error("Error updating group members after message sent", e);
           }
-        } catch (e) {
-          console.error("Failed to insert message", e);
         }
+      } catch (e) {
+        console.error("Failed to insert message with exception", e);
+      }
       }
       if (!queueMessages.isEmpty()) {
         DBupdate();

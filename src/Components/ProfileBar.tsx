@@ -83,6 +83,18 @@ export default function ProfileBar({
       chatId = getUniqueID();
 
       try {
+        // Insert new chat into chats table for foreign key integrity
+        const { error: insertChatError } = await DB
+          .from("chats")
+          .insert([
+            {
+              id: chatId,
+              members: JSON.stringify([currUserId, id]),
+            },
+          ]);
+
+        if (insertChatError) throw insertChatError;
+
         const { data: currUserData, error: currUserError } = await DB
           .from("users")
           .select("connections")
