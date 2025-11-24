@@ -1,8 +1,4 @@
 import logo from "../../logo.png";
-import twitterIcon from "../assets/twitter-icon.png";
-import linkedinIcon from "../assets/linkedin-icon.png";
-import githubIcon from "../assets/github-icon.png";
-import gmailIcon from "../assets/gmail-icon.png";
 
 export default function About({ classes }: {classes: string}) {
   return (
@@ -19,23 +15,9 @@ export default function About({ classes }: {classes: string}) {
           href="https://twtr.openinapp.link/9sf91"
           className="hover:text-sky-400"
         >
-          <b>Charan</b>
+          <b>Maxine</b>
         </a>
       </p>
-      <div className="flex gap-5 mt-3 border-zinc-700 border-t-2 pt-3 px-8">
-        <a href="https://openinapp.link/9fpce" target="_blank">
-          <img src={githubIcon} className="h-9" />
-        </a>
-        <a href="https://linkedin.openinapp.link/w381a" target="_blank">
-          <img src={linkedinIcon} className="h-9" />
-        </a>
-        <a href="https://twtr.openinapp.link/9sf91" target="_blank">
-          <img src={twitterIcon} className="h-9" />
-        </a>
-        <a href="mailto:r.charan.m.gm@gmail.com" target="_blank">
-          <img src={gmailIcon} className="h-9 rounded-full" />
-        </a>
-      </div>
     </div>
   );
 }

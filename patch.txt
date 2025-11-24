@@ -1,27 +1,22 @@
-const { data, error } = await supabase
-    .from('users')
-    .insert([
-      {
-        id: user.id,  // added id here
-        name: user.name,
-        status: user.status,
-        profile_img_url: user.profileImgUrl || '',
-        connections: user.connections || [],
-        is_online: user.isOnline || false,
-      }
-    ])
+import linkedinIcon from "../assets/linkedin-icon.png";
+import githubIcon from "../assets/github-icon.png";
+import gmailIcon from "../assets/gmail-icon.png";
 =======
-export async function addUser(user) {
-  const { data, error } = await supabase
-    .from('users')
-    .insert([
-      {
-        id: user.id,  // added id here
-        name: user.name,
-        status: user.status,
-        profile_img_url: user.profileImgUrl || '',
-        connections: user.connections || [],
-        is_online: user.isOnline || false,
-      }
-    ])
-    .select()
+
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+      <div className="flex gap-5 mt-3 border-zinc-700 border-t-2 pt-3 px-8">
+        <a href="https://openinapp.link/9fpce" target="_blank">
+          <img src={githubIcon} className="h-9" />
+        </a>
+        <a href="https://linkedin.openinapp.link/w381a" target="_blank">
+          <img src={linkedinIcon} className="h-9" />
+        </a>
+        <a href="https://twtr.openinapp.link/9sf91" target="_blank">
+          <img src={twitterIcon} className="h-9" />
+        </a>
+        <a href="mailto:r.charan.m.gm@gmail.com" target="_blank">
+          <img src={gmailIcon} className="h-9 rounded-full" />
+        </a>
+      </div>
+=======
