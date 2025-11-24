@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Input from "./Input";
 import { UserPlusIcon, PlusIcon } from "@heroicons/react/20/solid";
-import supabase, { addUser, usernameExists } from "../supabase/Supabase";
+import supabase, { addUser, usernameExists, STORAGE_BUCKET } from "../supabase/Supabase";
 import { useSetRecoilState } from "recoil";
 import { globalLoaderAtom } from "../atoms/atom";
 //import { User } from "./types";
@@ -69,30 +69,34 @@ export default function AddUser() {
     });
   };
 
-  // Upload photo to Supabase storage bucket 'public'
+  // Upload photo to Supabase storage bucket using configured bucket name
   const uploadPhoto = async (file) => {
     if (!file) return null;
     const fileExt = file.name.split('.').pop();
     const fileName = `${username}-${Date.now()}.${fileExt}`;
     const filePath = `Profile_Images/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('public')
-      .upload(filePath, file);
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(filePath, file);
 
-    if (uploadError) {
-      throw uploadError;
+      if (uploadError) {
+        if (uploadError.status === 404) {
+          throw new Error(`Storage bucket '${STORAGE_BUCKET}' not found. Please verify bucket exists in Supabase.`);
+        } else {
+          throw uploadError;
+        }
+      }
+
+      const { data } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (err) {
+      throw err;
     }
-
-    const { publicURL, error: urlError } = supabase.storage
-      .from('public')
-      .getPublicUrl(filePath);
-
-    if (urlError) {
-      throw urlError;
-    }
-
-    return publicURL;
   };
 
   const addUserHandler = async () => {

@@ -1,0 +1,21 @@
+const storageBucketName = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'public'
+export const STORAGE_BUCKET = storageBucketName;
+=======
+// Read bucket name from environment or default to 'public'
+const storageBucketName = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'public'
+
+// Startup validation for storage bucket env variable
+if (!import.meta.env.VITE_SUPABASE_STORAGE_BUCKET) {
+  console.error(
+    "[Supabase] Environment variable VITE_SUPABASE_STORAGE_BUCKET is not set. " +
+    "Please create a storage bucket in Supabase dashboard and set this variable. " +
+    "Defaulting to 'public' bucket will cause upload errors."
+  )
+} else if (import.meta.env.VITE_SUPABASE_STORAGE_BUCKET === 'public') {
+  console.error(
+    "[Supabase] The bucket name 'public' is reserved and should not be used. " +
+    "Please create and use a unique storage bucket name."
+  )
+}
+
+export const STORAGE_BUCKET = storageBucketName;
