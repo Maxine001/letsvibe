@@ -10,7 +10,7 @@ import {
   UserConnection,
 } from "../Components/types";
 import { getUniqueID } from "../Components/Utils";
-import { DB, DBStorage } from "../supabase/Supabase";
+import { DB, DBStorage, STORAGE_BUCKET } from "../supabase/Supabase";
 //import sentSound from "../assets/sent.mp3";
 // import receivedSound from "../assets/received.mp3";
 import MessageBox from "../Components/Message";
@@ -25,7 +25,7 @@ import fileIcon from "../assets/file.png";
 import ReactDOM from "react-dom";
 // import chatBG from "../assets/chatBG.jpg";
 
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+
 
 const queueMessages = new Queue();
 
@@ -321,6 +321,31 @@ export default function Chat({ classes }: { classes: string }) {
       if (!msg || msg === -1) continue;
 
       try {
+        // For private chats, ensure the chat exists in chats table
+        if (!msg.group_id && msg.chat_id) {
+          const { data: existingChat, error: chatError } = await DB
+            .from('chats')
+            .select('id')
+            .eq('id', msg.chat_id)
+            .maybeSingle();
+
+          if (chatError) {
+            console.error("Error checking chat existence:", chatError);
+          } else if (!existingChat) {
+            // Insert the chat for private conversation
+            const { error: insertChatError } = await DB
+              .from('chats')
+              .insert([{
+                id: msg.chat_id,
+                members: [msg.senderId, msg.chat_id]
+              }]);
+
+            if (insertChatError) {
+              console.error("Error inserting chat:", insertChatError);
+            }
+          }
+        }
+
         const { data, error } = await DB.from("messages").insert([
           {
             msg: msg.msg,
@@ -455,9 +480,10 @@ export default function Chat({ classes }: { classes: string }) {
       setList((l) => [...l, newMsg]);
 
       // upload file and set url from blob to storage
-      const storageRef = ref(DBStorage, "Files/" + fileDetails.name);
-      await uploadBytes(storageRef, file);
-      const fileUrl = await getDownloadURL(storageRef);
+      const { data, error } = await DBStorage.from(STORAGE_BUCKET).upload("Files/" + fileDetails.name, file);
+      if (error) throw error;
+      const { data: { publicUrl } } = DBStorage.from(STORAGE_BUCKET).getPublicUrl("Files/" + fileDetails.name);
+      const fileUrl = publicUrl;
 
       newMsg = {
         ...newMsg,
