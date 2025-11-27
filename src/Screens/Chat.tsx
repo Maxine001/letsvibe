@@ -72,6 +72,7 @@ export default function Chat({ classes }: { classes: string }) {
   const currentSideScreen = useRecoilValue<SideScreenSchema>(sideScreenAtom);
   const [currentUser, setCurrentUser] = useState<User>();
   const messagesListRef = useRef(null);
+  const isProcessingRef = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [fileDetails, setFileDetails] = useState<FileDetails | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -129,13 +130,13 @@ export default function Chat({ classes }: { classes: string }) {
 
       setList(mappedMessages);
 
-      // Setup realtime subscription for new messages
+      // Setup realtime subscription for new messages and updates
       subscription = DB.channel('public:messages')
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `${chatFilterColumn}=eq.${currentSideScreen.listId}` },
           (payload) => {
-            console.log("[realtime subscription] new message payload:", payload);
+            console.log("[realtime subscription] INSERT new message payload:", payload);
             const dbMsg = payload.new;
             const newMsg: Message = {
               ...dbMsg,
@@ -166,6 +167,30 @@ export default function Chat({ classes }: { classes: string }) {
                 updateGroupMessageStatusSeen(currentSideScreen.listId, newMsg);
               }
             }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages', filter: `${chatFilterColumn}=eq.${currentSideScreen.listId}` },
+          (payload) => {
+            console.log("[realtime subscription] UPDATE message payload:", payload);
+            const dbMsg = payload.new;
+            const updatedMsg: Message = {
+              ...dbMsg,
+              senderId: dbMsg.sender_id,
+              senderName: dbMsg.sender_name,
+              senderProfileImg: dbMsg.sender_profile_img,
+              msgStatus: dbMsg.msg_status,
+              isFile: dbMsg.is_file,
+              fileDetails: dbMsg.file_details,
+              chat_id: dbMsg.chat_id,
+              group_id: dbMsg.group_id,
+            };
+            setList((prevList) =>
+              prevList.map((msg) =>
+                msg.id === updatedMsg.id ? updatedMsg : msg
+              )
+            );
           }
         )
         .subscribe();
@@ -227,37 +252,31 @@ export default function Chat({ classes }: { classes: string }) {
 
   const updateGroupMessageStatusSeen = async (groupId: string, message: Message) => {
     try {
-      const { data: group, error: groupError } = await DB
-        .from("groups")
-        .select("members")
-        .eq("id", groupId)
-        .maybeSingle();
-
-      if (groupError || !group) {
-        console.error("Failed to get group members", groupError);
-        return;
-      }
-      const members: GroupMember[] = group.members || [];
       const currUserId = window.localStorage.getItem("chatapp-user-id");
 
-      const index = members.findIndex(m => m.userId === currUserId);
-      if (index === -1) return;
-
-      members[index].lastMsgStatus = MessageStatus.SEEN;
-
-      const indexNotSeen = members.findIndex(m => m.lastMsgStatus !== MessageStatus.SEEN);
-
+      // Update the current user's last_msg_status to SEEN in group_members
       await DB
-        .from("groups")
-        .update({ members: members })
-        .eq("id", groupId);
+        .from("group_members")
+        .update({ last_msg_status: MessageStatus.SEEN })
+        .eq("group_id", groupId)
+        .eq("user_id", currUserId);
 
-      if (indexNotSeen === -1) {
-        // Update message's msg_status to SEEN when all members have seen it
-        await DB
-          .from("messages")
-          .update({ msg_status: MessageStatus.SEEN })
-          .eq("id", message.id);
+      // Check if all members have seen the message
+      const { data: allMembers, error: membersError } = await DB
+        .from("group_members")
+        .select("last_msg_status")
+        .eq("group_id", groupId);
+
+      if (!membersError && allMembers) {
+        const allSeen = allMembers.every(m => m.last_msg_status === MessageStatus.SEEN);
+
+        if (allSeen) {
+          // Update message's msg_status to SEEN when all members have seen it
+          await DB
+            .from("messages")
+            .update({ msg_status: MessageStatus.SEEN })
+            .eq("id", message.id);
+        }
       }
     } catch (e) {
       console.error("Error updating group message status seen", e);
@@ -289,6 +308,104 @@ export default function Chat({ classes }: { classes: string }) {
       setCurrentUser(undefined);
     }
   };
+
+  // Process message queue to insert messages into DB
+  const processQueue = async () => {
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+
+    while (!queueMessages.isEmpty()) {
+      const msg = queueMessages.dequeue();
+      console.log("[DBupdate] dequeued message:", msg);
+
+      if (!msg || msg === -1) continue;
+
+      try {
+        const { data, error } = await DB.from("messages").insert([
+          {
+            msg: msg.msg,
+            msg_status: msg.msgStatus,
+            sender_id: msg.senderId,
+            sender_name: msg.senderName,
+            sender_profile_img: msg.senderProfileImg,
+            time: msg.time,
+            is_file: msg.isFile,
+            file_details: msg.fileDetails,
+            chat_id: msg.chat_id,
+            group_id: msg.group_id,
+          },
+        ]).select();
+
+        if (error) {
+          console.error("Supabase insert message error:", error);
+          // Additional handling or retry logic could be placed here
+        } else {
+          console.log("[DBupdate] Message inserted successfully");
+
+          if (!currentSideScreen.isGroup && data?.length > 0) {
+            try {
+              await DB
+                .from("messages")
+                .update({ msg_status: MessageStatus.SENT })
+                .eq("id", data[0].id);
+            } catch (e) {
+              console.error("Failed to update message status to SENT for private chat", e);
+            }
+          }
+        }
+
+        if (currentSideScreen.isGroup) {
+          try {
+            // Query group_members table instead of groups.members
+            const { data: groupMembers, error: groupError } = await DB
+              .from("group_members")
+              .select("*")
+              .eq("group_id", currentSideScreen.listId);
+
+            if (!groupError && groupMembers) {
+              const members: GroupMember[] = groupMembers.map(gm => ({
+                userId: gm.user_id,
+                lastMsgStatus: gm.last_msg_status,
+                color: gm.color
+              }));
+
+              // Update each member's last_msg_status in group_members table in parallel
+              const updatePromises = members.map(member => {
+                const newStatus = member.userId === window.localStorage.getItem("chatapp-user-id")
+                  ? MessageStatus.SEEN
+                  : MessageStatus.SENT;
+
+                return DB
+                  .from("group_members")
+                  .update({ last_msg_status: newStatus })
+                  .eq("group_id", currentSideScreen.listId)
+                  .eq("user_id", member.userId);
+              });
+
+              await Promise.all(updatePromises);
+            }
+
+            // Update message status to SENT for group messages
+            if (data?.length > 0) {
+              await DB
+                .from("messages")
+                .update({ msg_status: MessageStatus.SENT })
+                .eq("id", data[0].id);
+            }
+          } catch (e) {
+            console.error("Error updating group members after message sent", e);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to insert message with exception", e);
+      }
+    }
+    isProcessingRef.current = false;
+  };
+
+  useEffect(() => {
+    processQueue();
+  }, [currentSideScreen]);
 
   const sendMsg = async (msg: string) => {
     console.log("[sendMsg] currentSideScreen:", currentSideScreen);
@@ -341,98 +458,14 @@ export default function Chat({ classes }: { classes: string }) {
     setList((l) => [...l]);
     setFile(null);
     setFileDetails(null);
+
+    // Process the queue after enqueuing
+    processQueue();
   };
 
   useEffect(() => {
     scrollListToBottom();
   }, [list]);
-
-  // Process message queue to insert messages into DB
-  useEffect(() => {
-    let isProcessing = false;
-
-    const processQueue = async () => {
-      if (isProcessing) return;
-      isProcessing = true;
-
-      while (!queueMessages.isEmpty()) {
-        const msg = queueMessages.dequeue();
-        console.log("[DBupdate] dequeued message:", msg);
-
-        if (!msg || msg === -1) continue;
-
-        try {
-          const { data, error } = await DB.from("messages").insert([
-            {
-              msg: msg.msg,
-              msg_status: msg.msgStatus,
-              sender_id: msg.senderId,
-              sender_name: msg.senderName,
-              sender_profile_img: msg.senderProfileImg,
-              time: msg.time,
-              is_file: msg.isFile,
-              file_details: msg.fileDetails,
-              chat_id: msg.chat_id,
-              group_id: msg.group_id,
-            },
-          ]).select();
-
-          if (error) {
-            console.error("Supabase insert message error:", error);
-            // Additional handling or retry logic could be placed here
-          } else {
-            console.log("[DBupdate] Message inserted successfully");
-
-            if (!currentSideScreen.isGroup && data?.length > 0) {
-              try {
-                await DB
-                  .from("messages")
-                  .update({ msg_status: MessageStatus.SENT })
-                  .eq("id", data[0].id);
-              } catch (e) {
-                console.error("Failed to update message status to SENT for private chat", e);
-              }
-            }
-          }
-
-          if (currentSideScreen.isGroup) {
-            try {
-              const { data: group, error: groupError } = await DB
-                .from("groups")
-                .select("members")
-                .eq("id", currentSideScreen.listId)
-                .maybeSingle();
-
-              if (!groupError && group) {
-                const members: GroupMember[] = group.members || [];
-                members.forEach((m) => {
-                  if (
-                    m.userId !==
-                    (window.localStorage.getItem("chatapp-user-id") as string)
-                  ) {
-                    m.lastMsgStatus = MessageStatus.SENT;
-                  } else {
-                    m.lastMsgStatus = MessageStatus.SEEN;
-                  }
-                });
-
-                await DB.from("groups")
-                  .update({ members: members })
-                  .eq("id", currentSideScreen.listId);
-              }
-            } catch (e) {
-              console.error("Error updating group members after message sent", e);
-            }
-          }
-        } catch (e) {
-          console.error("Failed to insert message with exception", e);
-        }
-      }
-      isProcessing = false;
-    };
-
-    processQueue();
-  }, [currentSideScreen]);
 
   const inputFile = (e) => {
     const file: File = e.target.files[0];
