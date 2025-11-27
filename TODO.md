@@ -1,20 +1,9 @@
-# TODO - Fix real-time subscription errors with Supabase
+# Migration Plan: Fix Firebase Error and Migrate WebRTC Signaling to Supabase
 
-## TopProfileView.tsx
-- Remove Firebase imports: doc, onSnapshot
-- Import Supabase DB from src/supabase/Supabase.js
-- Fetch user is_online status via Supabase query on mount
-- Subscribe to user's is_online status changes using Supabase realtime channel
-- Update component state with user online status
-- Cleanup subscription on unmount
-
-## Chat.tsx
-- Refactor real-time subscription to use Supabase realtime channel API
-- Subscribe to 'messages' table INSERT events with .on('postgres_changes')
-- On new message event, update messages state avoiding duplicates
-- Properly unsubscribe on component unmount
-
-## Testing
-- Validate that real-time user online status updates correctly in TopProfileView
-- Validate chat messages real-time updates in Chat screen
-- Ensure no Firebase related errors in console
+## Tasks
+- [x] Add 'rooms' and 'ice_candidates' tables to supabase_db_schema.sql
+- [x] Update RLS policies in supabase_rls_policies.sql for new tables
+- [x] Replace Firebase Firestore operations in src/Components/Utils.ts with Supabase database queries and Realtime subscriptions
+- [x] Replace Firebase Firestore operations in src/Screens/Call.tsx with Supabase equivalents
+- [x] Remove Firebase dependencies from package.json
+- [ ] Test the migration to ensure WebRTC calls work with Supabase

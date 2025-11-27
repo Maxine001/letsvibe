@@ -2,7 +2,7 @@ import seenIcon from "../assets/seen.png";
 import sentIcon from "../assets/sent.png";
 import clockIcon from "../assets/clock.png";
 import { UserCircleIcon, ArrowDownTrayIcon } from "@heroicons/react/20/solid";
-import { FileType, GroupMember, MessageStatus } from "./types";
+import { FileType, MessageStatus } from "./types";
 import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 import fileIcon from "../assets/file.png";

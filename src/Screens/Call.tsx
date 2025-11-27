@@ -16,16 +16,9 @@ import {
   User,
 } from "../Components/types";
 import { isSideScreenActiveAtom, sideScreenAtom } from "../atoms/atom";
-import {
-  collection,
-  doc,
-  getDoc,
-  onSnapshot,
-  Unsubscribe,
-  updateDoc,
-} from "firebase/firestore";
 import { DB } from "../supabase/Supabase";
-import { createRoom, deleteRoom, joinRoom } from "../Components/Utils";
+import { RealtimeChannel } from "@supabase/supabase-js";
+import { createRoom, deleteRoom, joinRoom, getUniqueID } from "../Components/Utils";
 
 export default function Call({ classes }: { classes: string }) {
   const [isVideo, setIsVideo] = useState<boolean>(true);
@@ -60,11 +53,11 @@ export default function Call({ classes }: { classes: string }) {
     }
     if (currentSideScreen.isCaller && !onCall) {
       // update the incomming call ("isIncomming") at recipient to "false"
-      await updateDoc(doc(DB, "users", currentSideScreen.userId), {
+      await DB.from('users').update({
         incommingCall: {
           isIncomming: false,
         },
-      });
+      }).eq('id', currentSideScreen.userId);
     }
     if (roomId) {
       deleteRoom(roomId);
@@ -108,7 +101,7 @@ export default function Call({ classes }: { classes: string }) {
   useEffect(() => {
     if (!currentSideScreen.isCaller) return;
     let callTimeout: NodeJS.Timeout, endTimeout: NodeJS.Timeout;
-    let unsubRecipient: Unsubscribe, unsubRoom: Unsubscribe;
+    let recipientChannel: RealtimeChannel, roomChannel: RealtimeChannel;
     const setIncommingCall = async () => {
       const call: IncommingCall = {
         isIncomming: true,
@@ -118,94 +111,90 @@ export default function Call({ classes }: { classes: string }) {
         callerId: window.localStorage.getItem("chatapp-user-id") as string,
         roomId: "",
       };
-      await updateDoc(doc(DB, "users", currentSideScreen.userId), {
+      await DB.from('users').update({
         incommingCall: call,
-      });
+      }).eq('id', currentSideScreen.userId);
     };
 
     (async () => {
       try {
         await getMedia();
         // get online status of recipient
-        const snapshot = await getDoc(
-          doc(DB, "users", currentSideScreen.userId)
-        );
-        if (snapshot.exists()) {
-          const recipient = snapshot.data() as User;
-          if (recipient.isOnline) {
-            // make a call
-            setIncommingCall();
-            setCallStatus("Ringing...");
-            // listen to "isRejected" and "isAccepted" in recipient's profile
-            // (to call endCall() if "isRejected" is made true, or set call-status as "On Call" if "isAccepted" is made false, by recipient)
-            unsubRecipient = onSnapshot(
-              doc(DB, "users", currentSideScreen.userId),
-              async (snapshot) => {
-                if (snapshot.exists()) {
-                  const recipient = snapshot.data() as User;
-                  if (recipient.incommingCall.isRejected) {
-                    // when the call is rejected by recipient
-                    setCallStatus(
-                      `${currentSideScreen.name} rejected the Call`
-                    );
-                    endTimeout = setTimeout(endCall, 2000);
-                    unsubRecipient();
-                  }
-                  if (recipient.incommingCall.isAccepted) {
-                    // when call is accepted by recipient
-                    if (callTimeout) clearTimeout(callTimeout);
-                    setOnCall(true);
-                    setCallStatus("On Call");
-                    // create room
-                    const newRoomRef = doc(collection(DB, "rooms"));
-                    const tracks = await createRoom(
-                      newRoomRef,
-                      peerConnection,
-                      localStream,
-                      remoteStream
-                    );
-                    setVideoTrack(tracks.videoTrack);
-                    setAudioTrack(tracks.audioTrack);
-                    await updateDoc(
-                      doc(DB, "users", currentSideScreen.userId),
-                      {
-                        incommingCall: { roomId: newRoomRef.id },
-                      }
-                    );
-                    setRoomId(newRoomRef.id);
-                    // listen to "onCall" in the room, to end the call when reciever makes it false
-                    unsubRoom = onSnapshot(
-                      doc(DB, "rooms", newRoomRef.id),
-                      (snapshot) => {
-                        if (snapshot.exists()) {
-                          const currentRoom = snapshot.data() as Room;
-                          if (!currentRoom.onCall) {
-                            setCallStatus(
-                              `${currentSideScreen.name} have ended the call`
-                            );
-                            endTimeout = setTimeout(() => {
-                              endCall();
-                              unsubRoom();
-                            }, 1000);
-                          }
-                        }
-                      }
-                    );
-                    unsubRecipient();
-                  }
-                }
+        const { data: recipient } = await DB.from('users').select('*').eq('id', currentSideScreen.userId).single();
+        if (recipient && recipient.isOnline) {
+          // make a call
+          setIncommingCall();
+          setCallStatus("Ringing...");
+          // listen to "isRejected" and "isAccepted" in recipient's profile
+          // (to call endCall() if "isRejected" is made true, or set call-status as "On Call" if "isAccepted" is made false, by recipient)
+          recipientChannel = DB.channel(`user-${currentSideScreen.userId}`)
+            .on('postgres_changes', {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'users',
+              filter: `id=eq.${currentSideScreen.userId}`
+            }, async (payload) => {
+              const recipient = payload.new as User;
+              if (recipient.incommingCall.isRejected) {
+                // when the call is rejected by recipient
+                setCallStatus(
+                  `${currentSideScreen.name} rejected the Call`
+                );
+                endTimeout = setTimeout(endCall, 2000);
+                recipientChannel.unsubscribe();
               }
-            );
-            // end call if not picked up for "callRingTimeLimit" seconds
-            callTimeout = setTimeout(() => {
-              setCallStatus(currentSideScreen.name + " didn't pickup the call");
-              endTimeout = setTimeout(endCall, 2000);
-            }, callRingTimeLimit);
-          } else {
-            // when recipient is offline
-            setCallStatus(currentSideScreen.name + " is offline");
+              if (recipient.incommingCall.isAccepted) {
+                // when call is accepted by recipient
+                if (callTimeout) clearTimeout(callTimeout);
+                setOnCall(true);
+                setCallStatus("On Call");
+                // create room
+                const roomId = getUniqueID();
+                const tracks = await createRoom(
+                  roomId,
+                  peerConnection,
+                  localStream,
+                  remoteStream
+                );
+                setVideoTrack(tracks.videoTrack);
+                setAudioTrack(tracks.audioTrack);
+                await DB.from('users').update({
+                  incommingCall: { roomId: roomId },
+                }).eq('id', currentSideScreen.userId);
+                setRoomId(roomId);
+                // listen to "onCall" in the room, to end the call when reciever makes it false
+                roomChannel = DB.channel(`room-${roomId}`)
+                  .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'rooms',
+                    filter: `id=eq.${roomId}`
+                  }, (payload) => {
+                    const currentRoom = payload.new as Room;
+                    if (!currentRoom.on_call) {
+                      setCallStatus(
+                        `${currentSideScreen.name} have ended the call`
+                      );
+                      endTimeout = setTimeout(() => {
+                        endCall();
+                        roomChannel.unsubscribe();
+                      }, 1000);
+                    }
+                  })
+                  .subscribe();
+                recipientChannel.unsubscribe();
+              }
+            })
+            .subscribe();
+          // end call if not picked up for "callRingTimeLimit" seconds
+          callTimeout = setTimeout(() => {
+            setCallStatus(currentSideScreen.name + " didn't pickup the call");
             endTimeout = setTimeout(endCall, 2000);
-          }
+          }, callRingTimeLimit);
+        } else {
+          // when recipient is offline
+          setCallStatus(currentSideScreen.name + " is offline");
+          endTimeout = setTimeout(endCall, 2000);
         }
       } catch (err) {
         // when media devices are not allowed to be accessed
@@ -219,56 +208,53 @@ export default function Call({ classes }: { classes: string }) {
     return () => {
       if (callTimeout) clearTimeout(callTimeout);
       if (endTimeout) clearTimeout(endTimeout);
-      if (unsubRecipient) unsubRecipient();
-      if (unsubRoom) unsubRoom();
+      if (recipientChannel) recipientChannel.unsubscribe();
+      if (roomChannel) roomChannel.unsubscribe();
     };
   }, []);
 
   // useEffect for reciever
   useEffect(() => {
     if (currentSideScreen.isCaller) return;
-    let unsubRoom: Unsubscribe;
+    let roomChannel: RealtimeChannel;
     let endTimeout: NodeJS.Timeout;
-    getDoc(
-      doc(DB, "users", window.localStorage.getItem("chatapp-user-id"))
-    ).then((snapshot) => {
-      if (snapshot.exists()) {
-        const currentUser = snapshot.data() as User;
-        if (currentUser.incommingCall.roomId) {
-          setRoomId(currentUser.incommingCall.roomId);
-          getMedia().then(async () => {
-            const tracks = await joinRoom(
-              currentUser.incommingCall.roomId,
-              peerConnection,
-              localStream,
-              remoteStream
-            );
-            setVideoTrack(tracks.videoTrack);
-            setAudioTrack(tracks.audioTrack);
-            // listen to "onCall" in the room, to end the call when caller makes it false
-            unsubRoom = onSnapshot(
-              doc(DB, "rooms", currentUser.incommingCall.roomId),
-              (snapshot) => {
-                if (snapshot.exists()) {
-                  const currentRoom = snapshot.data() as Room;
-                  if (onCall && !currentRoom.onCall) {
-                    setCallStatus(
-                      `${currentSideScreen.name} have ended the call`
-                    );
-                    endTimeout = setTimeout(() => {
-                      endCall();
-                      unsubRoom();
-                    }, 1000);
-                  }
-                }
+    DB.from('users').select('*').eq('id', window.localStorage.getItem("chatapp-user-id")).single().then(({ data: currentUser }) => {
+      if (currentUser && currentUser.incommingCall.roomId) {
+        setRoomId(currentUser.incommingCall.roomId);
+        getMedia().then(async () => {
+          const tracks = await joinRoom(
+            currentUser.incommingCall.roomId,
+            peerConnection,
+            localStream,
+            remoteStream
+          );
+          setVideoTrack(tracks.videoTrack);
+          setAudioTrack(tracks.audioTrack);
+          // listen to "onCall" in the room, to end the call when caller makes it false
+          roomChannel = DB.channel(`room-${currentUser.incommingCall.roomId}`)
+            .on('postgres_changes', {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'rooms',
+              filter: `id=eq.${currentUser.incommingCall.roomId}`
+            }, (payload) => {
+              const currentRoom = payload.new as Room;
+              if (onCall && !currentRoom.on_call) {
+                setCallStatus(
+                  `${currentSideScreen.name} have ended the call`
+                );
+                endTimeout = setTimeout(() => {
+                  endCall();
+                  roomChannel.unsubscribe();
+                }, 1000);
               }
-            );
-          });
-        }
+            })
+            .subscribe();
+        });
       }
     });
     return () => {
-      if (unsubRoom) unsubRoom();
+      if (roomChannel) roomChannel.unsubscribe();
       if (endTimeout) clearTimeout(endTimeout);
     };
   }, []);
@@ -361,9 +347,9 @@ export default function Call({ classes }: { classes: string }) {
           className="bg-danger hover:bg-[#d12624] p-3 rounded-full h-fit"
           onClick={() => {
             if (onCall) {
-              updateDoc(doc(DB, "rooms", roomId), {
-                onCall: false,
-              }).then(() => {
+              DB.from('rooms').update({
+                on_call: false,
+              }).eq('id', roomId).then(() => {
                 setOnCall(false);
                 endCall();
               });

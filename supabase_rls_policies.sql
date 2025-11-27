@@ -68,3 +68,82 @@ ON group_members
 FOR UPDATE
 TO public
 USING (true);
+
+-- Enable Row Level Security for the "groups" table
+ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
+
+-- Create policy to allow public users to select groups
+CREATE POLICY "Allow public users to select groups"
+ON groups
+FOR SELECT
+TO public
+USING (true);
+
+-- Create policy to allow public users to insert groups
+CREATE POLICY "Allow public users to insert groups"
+ON groups
+FOR INSERT
+TO public
+WITH CHECK (true);
+
+-- Create policy to allow public users to update groups
+CREATE POLICY "Allow public users to update groups"
+ON groups
+FOR UPDATE
+TO public
+USING (true);
+
+-- Enable Row Level Security for the "rooms" table
+ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
+
+-- Create policy to allow public users to select rooms
+CREATE POLICY "Allow public users to select rooms"
+ON rooms
+FOR SELECT
+TO public
+USING (true);
+
+-- Create policy to allow public users to insert rooms
+CREATE POLICY "Allow public users to insert rooms"
+ON rooms
+FOR INSERT
+TO public
+WITH CHECK (true);
+
+-- Create policy to allow public users to update rooms
+CREATE POLICY "Allow public users to update rooms"
+ON rooms
+FOR UPDATE
+TO public
+USING (true);
+
+-- Create policy to allow public users to delete rooms
+CREATE POLICY "Allow public users to delete rooms"
+ON rooms
+FOR DELETE
+TO public
+USING (true);
+
+-- Enable Row Level Security for the "ice_candidates" table
+ALTER TABLE ice_candidates ENABLE ROW LEVEL SECURITY;
+
+-- Create policy to allow public users to select ice_candidates
+CREATE POLICY "Allow public users to select ice_candidates"
+ON ice_candidates
+FOR SELECT
+TO public
+USING (true);
+
+-- Create policy to allow public users to insert ice_candidates
+CREATE POLICY "Allow public users to insert ice_candidates"
+ON ice_candidates
+FOR INSERT
+TO public
+WITH CHECK (true);
+
+-- Create policy to allow public users to delete ice_candidates
+CREATE POLICY "Allow public users to delete ice_candidates"
+ON ice_candidates
+FOR DELETE
+TO public
+USING (true);

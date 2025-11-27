@@ -72,3 +72,23 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 CREATE INDEX idx_messages_group_id ON messages(group_id);
+
+-- Rooms table for WebRTC signaling
+CREATE TABLE IF NOT EXISTS rooms (
+  id VARCHAR PRIMARY KEY,
+  on_call BOOLEAN DEFAULT TRUE,
+  offer JSONB,
+  answer JSONB,
+  created_at TIMESTAMP DEFAULT now()
+);
+
+-- ICE Candidates table for WebRTC signaling
+CREATE TABLE IF NOT EXISTS ice_candidates (
+  id SERIAL PRIMARY KEY,
+  room_id VARCHAR REFERENCES rooms(id) ON DELETE CASCADE,
+  candidate JSONB NOT NULL,
+  type VARCHAR NOT NULL, -- 'caller' or 'callee'
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX idx_ice_candidates_room_id ON ice_candidates(room_id);

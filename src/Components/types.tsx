@@ -107,7 +107,7 @@ export interface SideScreenSchema {
 }
 export interface Room {
   id: string,
-  onCall: boolean,
+  on_call: boolean,
   offer: {
     type: RTCSdpType,
     sdp: string
