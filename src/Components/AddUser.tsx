@@ -45,7 +45,7 @@ export function AddPhoto(props: any) {
 export function Photo(props: any) {
   return <img {...props} className="rounded-full h-32" />;
 }
-export default function AddUser() {
+export default function AddUser({ onClose }: { onClose?: () => void }) {
   const [photo, setPhoto] = useState<File>();
   const setIsLoading = useSetRecoilState(globalLoaderAtom);
   const [username, setUsername] = useState("");
@@ -139,7 +139,14 @@ export default function AddUser() {
         return;
       }
       window.localStorage.setItem("chatapp-user-id", insertedUserId);
-      window.location.reload();
+
+      // Dispatch a custom event to notify that the current user ID has changed
+      window.dispatchEvent(new CustomEvent("chatappUserIdChanged", { detail: insertedUserId }));
+
+      // Call onClose callback to close/hide AddUser after successful addition
+      if (onClose) {
+        onClose();
+      }
     } catch (e) {
       alert("There was an Error");
       console.log(e);

@@ -1,2 +1,7 @@
-# Add the missing VITE_SUPABASE_STORAGE_BUCKET environment variable to .env
-VITE_SUPABASE_STORAGE_BUCKET=profile_image
+const [currentUser, setCurrentUser] = useState<User | null>(null)
+=======
+  const [isUser, setIsUser] = useState<boolean>();
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+
+  // New state to track user list refresh toggle
+  const [userListRefreshToggle, setUserListRefreshToggle] = useState(false);

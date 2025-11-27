@@ -28,6 +28,9 @@ export default function App() {
   const [isUser, setIsUser] = useState<boolean>();
   const [currentUser, setCurrentUser] = useState<User | null>(null)
 
+  // New state to track user list refresh toggle
+  const [userListRefreshToggle, setUserListRefreshToggle] = useState(false);
+
     useEffect(() => {
     let subscription: any; // To hold realtime subscription
     const checkUserExists = async () => {
@@ -110,7 +113,10 @@ export default function App() {
   return (
     <>
       {isLoading && <Loader classes="fixed bg-zinc-700/50 z-50" />}
-      {isUser == false && <AddUser />}
+      {isUser == false && <AddUser onClose={() => {
+        setIsUser(true);
+        setUserListRefreshToggle((prev) => !prev);
+      }} />}
       {currentUser && currentUser.incommingCall && currentUser.incommingCall.isIncomming && <IncommingCall call={currentUser.incommingCall} />}
       <div className="md:flex md:w-screen overflow-hidden h-screen">
         <ChatsList
@@ -119,6 +125,7 @@ export default function App() {
             " " +
             (isSideScreenActive ? "hidden md:block" : "")
           }
+          refreshToggle={userListRefreshToggle}
         />
         <SideScreen
           Screen={
