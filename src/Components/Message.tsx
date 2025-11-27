@@ -3,7 +3,6 @@ import sentIcon from "../assets/sent.png";
 import clockIcon from "../assets/clock.png";
 import { UserCircleIcon, ArrowDownTrayIcon } from "@heroicons/react/20/solid";
 import { FileType, GroupMember, MessageStatus } from "./types";
-import { doc, getDoc } from "firebase/firestore";
 import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 import fileIcon from "../assets/file.png";
@@ -40,15 +39,13 @@ export function StatusIndicator({ status }: any) {
 }
 export const getMemberColor = (chatId: string, senderId: string) => {
   return new Promise((resolve, reject) => {
-    getDoc(doc(DB, "groups", chatId))
-      .then((snapshot) => {
-        const members: GroupMember[] = snapshot.data().members;
-        const index = members.findIndex((m) => m.userId == senderId);
-        if (index !== -1) {
-          resolve(members[index].color);
-        } else {
-          reject(new Error("Member not found"));
+    DB.from('group_members').select('color').eq('group_id', chatId).eq('user_id', senderId).single()
+      .then(({ data, error }) => {
+        if (error) {
+          reject(error);
+          return;
         }
+        resolve(data.color);
       })
       .catch((error) => {
         reject(error);

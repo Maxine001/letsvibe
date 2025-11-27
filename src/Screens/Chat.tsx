@@ -114,7 +114,20 @@ export default function Chat({ classes }: { classes: string }) {
         return;
       }
 
-      setList(initialMessages || []);
+      // Map database fields to interface fields
+      const mappedMessages = (initialMessages || []).map(msg => ({
+        ...msg,
+        senderId: msg.sender_id,
+        senderName: msg.sender_name,
+        senderProfileImg: msg.sender_profile_img,
+        msgStatus: msg.msg_status,
+        isFile: msg.is_file,
+        fileDetails: msg.file_details,
+        chat_id: msg.chat_id,
+        group_id: msg.group_id,
+      }));
+
+      setList(mappedMessages);
 
       // Setup realtime subscription for new messages
       subscription = DB.channel('public:messages')
@@ -122,7 +135,19 @@ export default function Chat({ classes }: { classes: string }) {
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `${chatFilterColumn}=eq.${currentSideScreen.listId}` },
           (payload) => {
-            const newMsg = payload.new as Message;
+            console.log("[realtime subscription] new message payload:", payload);
+            const dbMsg = payload.new;
+            const newMsg: Message = {
+              ...dbMsg,
+              senderId: dbMsg.sender_id,
+              senderName: dbMsg.sender_name,
+              senderProfileImg: dbMsg.sender_profile_img,
+              msgStatus: dbMsg.msg_status,
+              isFile: dbMsg.is_file,
+              fileDetails: dbMsg.file_details,
+              chat_id: dbMsg.chat_id,
+              group_id: dbMsg.group_id,
+            };
             setList((prevList) => {
               // Avoid duplicates
               if (prevList.find((m) => m.id === newMsg.id)) {
@@ -266,7 +291,11 @@ export default function Chat({ classes }: { classes: string }) {
   };
 
   const sendMsg = async (msg: string) => {
+    console.log("[sendMsg] currentSideScreen:", currentSideScreen);
+    console.log("[sendMsg] currentUser:", currentUser);
+
     if (!currentUser) {
+      console.warn("[sendMsg] No current user set, abort sending message");
       return;
     }
     const id = getUniqueID();
@@ -284,6 +313,8 @@ export default function Chat({ classes }: { classes: string }) {
       fileDetails: null,
     };
 
+    console.log("[sendMsg] newMsg to enqueue:", newMsg);
+
     if (newMsg.isFile && fileDetails != null && file != null) {
       newMsg.fileDetails = { ...fileDetails };
       setList((l) => [...l, newMsg]);
@@ -300,6 +331,8 @@ export default function Chat({ classes }: { classes: string }) {
           url: fileUrl,
         },
       };
+
+      console.log("[sendMsg] newMsg with uploaded file URL:", newMsg);
     } else {
       setList((l) => [...l, newMsg]);
     }
@@ -311,69 +344,95 @@ export default function Chat({ classes }: { classes: string }) {
   };
 
   useEffect(() => {
-    const DBupdate = async () => {
-      const msg = queueMessages.dequeue();
-      if (msg && msg !== -1) {
-      try {
-        const { error } = await DB.from("messages").insert([
-          {
-            // id: msg.id,  // removed to let DB auto generate the id
-            msg: msg.msg,
-            msg_status: msg.msgStatus,
-            sender_id: msg.senderId,
-            sender_name: msg.senderName,
-            sender_profile_img: msg.senderProfileImg,
-            time: msg.time,
-            is_file: msg.isFile,
-            file_details: msg.fileDetails,
-            chat_id: msg.chat_id,
-            group_id: msg.group_id,
-          },
-        ]);
-
-        if (error) {
-          console.error("Supabase insert message error:", error);
-          // Additional handling or retry logic could be placed here
-        } else if (currentSideScreen.isGroup) {
-          try {
-            const { data: group, error: groupError } = await DB
-              .from("groups")
-              .select("members")
-              .eq("id", currentSideScreen.listId)
-              .maybeSingle();
-
-            if (!groupError && group) {
-              const members: GroupMember[] = group.members || [];
-              members.forEach((m) => {
-                if (
-                  m.userId !==
-                  (window.localStorage.getItem("chatapp-user-id") as string)
-                ) {
-                  m.lastMsgStatus = MessageStatus.SENT;
-                } else {
-                  m.lastMsgStatus = MessageStatus.SEEN;
-                }
-              });
-
-              await DB.from("groups")
-                .update({ members: members })
-                .eq("id", currentSideScreen.listId);
-            }
-          } catch (e) {
-            console.error("Error updating group members after message sent", e);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to insert message with exception", e);
-      }
-      }
-      if (!queueMessages.isEmpty()) {
-        DBupdate();
-      }
-    };
     scrollListToBottom();
-    DBupdate();
   }, [list]);
+
+  // Process message queue to insert messages into DB
+  useEffect(() => {
+    let isProcessing = false;
+
+    const processQueue = async () => {
+      if (isProcessing) return;
+      isProcessing = true;
+
+      while (!queueMessages.isEmpty()) {
+        const msg = queueMessages.dequeue();
+        console.log("[DBupdate] dequeued message:", msg);
+
+        if (!msg || msg === -1) continue;
+
+        try {
+          const { data, error } = await DB.from("messages").insert([
+            {
+              msg: msg.msg,
+              msg_status: msg.msgStatus,
+              sender_id: msg.senderId,
+              sender_name: msg.senderName,
+              sender_profile_img: msg.senderProfileImg,
+              time: msg.time,
+              is_file: msg.isFile,
+              file_details: msg.fileDetails,
+              chat_id: msg.chat_id,
+              group_id: msg.group_id,
+            },
+          ]).select();
+
+          if (error) {
+            console.error("Supabase insert message error:", error);
+            // Additional handling or retry logic could be placed here
+          } else {
+            console.log("[DBupdate] Message inserted successfully");
+
+            if (!currentSideScreen.isGroup && data?.length > 0) {
+              try {
+                await DB
+                  .from("messages")
+                  .update({ msg_status: MessageStatus.SENT })
+                  .eq("id", data[0].id);
+              } catch (e) {
+                console.error("Failed to update message status to SENT for private chat", e);
+              }
+            }
+          }
+
+          if (currentSideScreen.isGroup) {
+            try {
+              const { data: group, error: groupError } = await DB
+                .from("groups")
+                .select("members")
+                .eq("id", currentSideScreen.listId)
+                .maybeSingle();
+
+              if (!groupError && group) {
+                const members: GroupMember[] = group.members || [];
+                members.forEach((m) => {
+                  if (
+                    m.userId !==
+                    (window.localStorage.getItem("chatapp-user-id") as string)
+                  ) {
+                    m.lastMsgStatus = MessageStatus.SENT;
+                  } else {
+                    m.lastMsgStatus = MessageStatus.SEEN;
+                  }
+                });
+
+                await DB.from("groups")
+                  .update({ members: members })
+                  .eq("id", currentSideScreen.listId);
+              }
+            } catch (e) {
+              console.error("Error updating group members after message sent", e);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to insert message with exception", e);
+        }
+      }
+      isProcessing = false;
+    };
+
+    processQueue();
+  }, [currentSideScreen]);
 
   const inputFile = (e) => {
     const file: File = e.target.files[0];
