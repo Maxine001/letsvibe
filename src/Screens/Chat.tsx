@@ -342,58 +342,76 @@ export default function Chat({ classes }: { classes: string }) {
         } else {
           console.log("[DBupdate] Message inserted successfully");
 
-          if (!currentSideScreen.isGroup && data?.length > 0) {
+          if (data?.length > 0) {
+            const insertedMsg = data[0];
+
+            // Update the message status in the database to SENT
             try {
               await DB
                 .from("messages")
                 .update({ msg_status: MessageStatus.SENT })
-                .eq("id", data[0].id);
+                .eq("id", insertedMsg.id);
             } catch (e) {
-              console.error("Failed to update message status to SENT for private chat", e);
+              console.error("Failed to update message status to SENT in database", e);
             }
-          }
-        }
 
-        if (currentSideScreen.isGroup) {
-          try {
-            // Query group_members table instead of groups.members
-            const { data: groupMembers, error: groupError } = await DB
-              .from("group_members")
-              .select("*")
-              .eq("group_id", currentSideScreen.listId);
+            // Update the message in the list with the real ID and SENT status
+            setList((prevList) =>
+              prevList.map((m) =>
+                m.id === msg.id
+                  ? {
+                      ...m,
+                      id: insertedMsg.id,
+                      msgStatus: MessageStatus.SENT,
+                      senderId: insertedMsg.sender_id,
+                      senderName: insertedMsg.sender_name,
+                      senderProfileImg: insertedMsg.sender_profile_img,
+                      msg: insertedMsg.msg,
+                      time: insertedMsg.time,
+                      isFile: insertedMsg.is_file,
+                      fileDetails: insertedMsg.file_details,
+                      chat_id: insertedMsg.chat_id,
+                      group_id: insertedMsg.group_id,
+                    }
+                  : m
+              )
+            );
 
-            if (!groupError && groupMembers) {
-              const members: GroupMember[] = groupMembers.map(gm => ({
-                userId: gm.user_id,
-                lastMsgStatus: gm.last_msg_status,
-                color: gm.color
-              }));
-
-              // Update each member's last_msg_status in group_members table in parallel
-              const updatePromises = members.map(member => {
-                const newStatus = member.userId === window.localStorage.getItem("chatapp-user-id")
-                  ? MessageStatus.SEEN
-                  : MessageStatus.SENT;
-
-                return DB
+            // For group chats, update group members' last_msg_status
+            if (currentSideScreen.isGroup) {
+              try {
+                // Query group_members table
+                const { data: groupMembers, error: groupError } = await DB
                   .from("group_members")
-                  .update({ last_msg_status: newStatus })
-                  .eq("group_id", currentSideScreen.listId)
-                  .eq("user_id", member.userId);
-              });
+                  .select("*")
+                  .eq("group_id", currentSideScreen.listId);
 
-              await Promise.all(updatePromises);
-            }
+                if (!groupError && groupMembers) {
+                  const members: GroupMember[] = groupMembers.map(gm => ({
+                    userId: gm.user_id,
+                    lastMsgStatus: gm.last_msg_status,
+                    color: gm.color
+                  }));
 
-            // Update message status to SENT for group messages
-            if (data?.length > 0) {
-              await DB
-                .from("messages")
-                .update({ msg_status: MessageStatus.SENT })
-                .eq("id", data[0].id);
+                  // Update each member's last_msg_status in group_members table in parallel
+                  const updatePromises = members.map(member => {
+                    const newStatus = member.userId === window.localStorage.getItem("chatapp-user-id")
+                      ? MessageStatus.SEEN
+                      : MessageStatus.SENT;
+
+                    return DB
+                      .from("group_members")
+                      .update({ last_msg_status: newStatus })
+                      .eq("group_id", currentSideScreen.listId)
+                      .eq("user_id", member.userId);
+                  });
+
+                  await Promise.allSettled(updatePromises); // Use allSettled to prevent one failure from stopping others
+                }
+              } catch (e) {
+                console.error("Error updating group members after message sent", e);
+              }
             }
-          } catch (e) {
-            console.error("Error updating group members after message sent", e);
           }
         }
       } catch (e) {
