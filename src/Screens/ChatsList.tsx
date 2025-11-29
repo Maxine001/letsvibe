@@ -257,6 +257,7 @@ const fetchUsersAndCurrentUser = async () => {
     if (currentUser && (groups.length > 0 || users.length > 0)) {
       fetchUnreadCounts(currentUser.id);
       fetchUserLastMsgs(currentUser.id);
+      fetchGroupLastMsgs();
     }
   }, [groups, users, currentUser]);
 

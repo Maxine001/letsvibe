@@ -84,7 +84,6 @@ export default function ProfileBar({
   isOnline = false,
   lastMsgStatus,
   lastMsg,
-  lastUpdatedTime,
   lastMsgSenderId,
   lastMsgSenderName,
   lastMsgStatusForGroup,
@@ -276,7 +275,7 @@ export default function ProfileBar({
           </p>
         </div>
       </div>
-      <div className="absolute right-4 top-2 text-xs">{lastUpdatedTime}</div>
+
       <div className="absolute right-4 bottom-3 flex gap-2">
         {!isGroup && isOnline && <div className="h-3 w-3 bg-green-500 rounded-full"></div> }
         {currentSideScreen.listId !== chatId &&

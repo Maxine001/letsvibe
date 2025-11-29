@@ -11,3 +11,5 @@
 - [x] Create `fetchGroupLastMsgs` function in `ChatsList.tsx` to fetch latest messages from messages table for groups
 - [x] Call `fetchGroupLastMsgs` in `useEffect` after groups are set
 - [x] Update ProfileBar props for groups to use fetched last message data from messages table
+- [x] Update Chat.tsx to populate groups table with last message data when messages are sent
+- [x] Create SQL script to update existing groups with last message data
