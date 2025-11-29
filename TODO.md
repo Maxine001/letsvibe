@@ -1,35 +1,19 @@
-# TODO: Fix Private Messages Visibility Issue
+# TODO: Implement Unread Messages Count and Highlight
 
-## Problem
-- Personal messages sent from localhost user to netlify user are not visible to the netlify user.
-- Group messages work fine.
+## Tasks
+- [x] Modify ChatsList.tsx to fetch unread message counts for groups and users
+- [x] Update ProfileBar.tsx to display unread count badge and highlight last message if unread
+- [ ] Test the implementation
 
-## Root Cause
-- For private chats, the chat_id was set to the receiver's id, but the receiver filters on sender's id, causing mismatch.
-- Connections were not updated for both users when sending private messages.
+## Details
+- For groups: Fetch count of messages where group_id = group.id, sender_id != currentUser.id, msg_status != SEEN
+- For users: Fetch count of messages where chat_id = chatId, sender_id != currentUser.id, msg_status != SEEN
+- Display unread count as a badge in ProfileBar if > 0
+- Highlight last message text (bold or different color) if lastMsgStatus is SENT (unread)
 
-## Solution
-- Use deterministic chatId for private chats: sorted ids joined by '-'.
-- Update connections for both sender and receiver after sending private messages.
-
-## Changes Made
-
-### 1. ChatsList.tsx
-- [x] Changed private chat chatId to deterministic: [currentUser.id, u.id].sort().join('-')
-- [x] Unified the ProfileBar rendering for all users, using the deterministic chatId.
-
-### 2. Chat.tsx
-- [x] Fixed insert chat members for private: members: [senderId, receiverId] instead of [senderId, chat_id]
-- [x] Added update connections logic for both users after successful message insert for private chats.
-
-### 3. ProfileBar.tsx
-- [x] No changes needed, as chatId is now always provided.
-
-## Testing
-- Test sending private messages between users.
-- Verify both users see the messages.
-- Check connections are updated correctly.
-
-## Followup
-- Monitor for any issues with existing chats.
-- If needed, migrate old connections to use deterministic chatId.
+## Implementation Summary
+- Added unreadCounts state in ChatsList.tsx to store counts for each chat/group
+- Created fetchUnreadCounts function to query database for unread messages
+- Passed unreadCount prop to ProfileBar components
+- Updated ProfileBar to display unread count badge next to name
+- Highlighted last message text when unread (status SENT) by making it bold and lighter color

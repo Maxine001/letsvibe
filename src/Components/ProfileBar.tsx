@@ -46,6 +46,7 @@ export default function ProfileBar({
   lastMsgSenderId,
   lastMsgSenderName,
   lastMsgStatusForGroup,
+  unreadCount = 0,
 }: any) {
   const [currentSideScreen, setCurrentSideScreen] =
     useRecoilState<SideScreenSchema>(sideScreenAtom);
@@ -185,7 +186,14 @@ export default function ProfileBar({
         <UserCircleIcon className="h-12 mr-1 my-2 ml-2 border-white border-2 rounded-full" />
       )}
       <div className="flex flex-col">
-        <p className="text-lg font-semibold text-zinc-200">{name}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-lg font-semibold text-zinc-200">{name}</p>
+          {unreadCount > 0 && (
+            <div className="bg-primary text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </div>
+          )}
+        </div>
         <div className="flex gap-1 items-center">
           {lastMsgSenderId ==
             (window.localStorage.getItem("chatapp-user-id") as string) &&
@@ -210,7 +218,9 @@ export default function ProfileBar({
                 <p className="text-sm text-zinc-400">:</p>
               </>
             ))}
-          <p className="text-sm text-zinc-400">{lastMsg}</p>
+          <p className={`text-sm ${((isGroup ? lastMsgStatusForGroup : lastMsgStatus) === MessageStatus.SENT) ? 'font-bold text-zinc-200' : 'text-zinc-400'}`}>
+            {lastMsg}
+          </p>
         </div>
       </div>
       <div className="absolute right-4 top-2 text-xs">{lastUpdatedTime}</div>

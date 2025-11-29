@@ -19,6 +19,42 @@ export default function ChatsList({ classes }: any) {
   const [currentUser, setCurrentUser] = useState<User>();
   const [isLoading, setIsLoading] = useState(false);
   const [searchString, setSearchString] = useState("");
+  const [unreadCounts, setUnreadCounts] = useState<{[key: string]: number}>({});
+
+  const fetchUnreadCounts = async (currUser: string) => {
+    const counts: {[key: string]: number} = {};
+
+    // Fetch unread counts for groups
+    for (const g of groups) {
+      const { count, error } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("group_id", g.id)
+        .neq("sender_id", currUser)
+        .neq("msg_status", MessageStatus.SEEN);
+
+      if (!error && count !== null) {
+        counts[g.id] = count;
+      }
+    }
+
+    // Fetch unread counts for users
+    for (const u of users) {
+      const chatId = [currUser, u.id].sort().join('-');
+      const { count, error } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("chat_id", chatId)
+        .neq("sender_id", currUser)
+        .neq("msg_status", MessageStatus.SEEN);
+
+      if (!error && count !== null) {
+        counts[chatId] = count;
+      }
+    }
+
+    setUnreadCounts(counts);
+  };
 
   useEffect(() => {
     setIsLoading(true);
@@ -160,6 +196,12 @@ const fetchUsersAndCurrentUser = async () => {
     setIsLoading(false);
   }, []);
 
+  useEffect(() => {
+    if (currentUser && (groups.length > 0 || users.length > 0)) {
+      fetchUnreadCounts(currentUser.id);
+    }
+  }, [groups, users, currentUser]);
+
   const filteredGroups = () => {
     if (searchString) {
       return groups.filter((g) =>
@@ -252,6 +294,7 @@ const fetchUsersAndCurrentUser = async () => {
             lastUpdatedTime={g.lastUpdatedTime}
             lastMsgSenderId={g.lastMsgSenderId}
             lastMsgSenderName={g.lastMsgSenderName}
+            unreadCount={unreadCounts[g.id] || 0}
           />
         ))}
         {users.length > 0 && (
@@ -279,6 +322,7 @@ const fetchUsersAndCurrentUser = async () => {
               lastUpdatedTime={connection ? connection.lastUpdatedTime : ""}
               lastMsgSenderId={connection ? connection.lastMsgSenderId : ""}
               lastMsgSenderName={connection ? connection.lastMsgSenderName : ""}
+              unreadCount={unreadCounts[chatId] || 0}
             />
           );
         })}
