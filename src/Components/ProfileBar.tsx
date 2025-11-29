@@ -12,6 +12,48 @@ import { useEffect, useState } from "react";
 // import notificationSound from "../assets/notification.mp3";
 import { StatusIndicator } from "./Message";
 
+const updateGroupMessagesToSeen = async (groupId: string) => {
+  const currUserId = window.localStorage.getItem("chatapp-user-id") as string;
+
+  // Update current user's last_msg_status to SEEN
+  await DB.from("group_members").update({ last_msg_status: MessageStatus.SEEN }).eq("group_id", groupId).eq("user_id", currUserId);
+
+  // Update all messages in the group to SEEN
+  await DB.from("messages").update({ msg_status: MessageStatus.SEEN }).eq("group_id", groupId).neq("sender_id", currUserId);
+};
+
+const updateUserMessagesToSeen = async (chatId: string) => {
+  const currUserId = window.localStorage.getItem("chatapp-user-id") as string;
+
+  // Update messages to SEEN
+  await DB.from("messages").update({ msg_status: MessageStatus.SEEN }).eq("chat_id", chatId).neq("sender_id", currUserId);
+
+  // Update connections
+  const receiverId = chatId.split('-').find(id => id !== currUserId);
+
+  // Update current user's connections
+  const { data: currData } = await DB.from("users").select("connections").eq("id", currUserId).maybeSingle();
+  if (currData) {
+    const connections: UserConnection[] = currData.connections || [];
+    const index = connections.findIndex(c => c.userId === receiverId);
+    if (index >= 0) {
+      connections[index].lastMsgStatus = MessageStatus.SEEN;
+      await DB.from("users").update({ connections: connections }).eq("id", currUserId);
+    }
+  }
+
+  // Update receiver's connections
+  const { data: recData } = await DB.from("users").select("connections").eq("id", receiverId).maybeSingle();
+  if (recData) {
+    const connections: UserConnection[] = recData.connections || [];
+    const index = connections.findIndex(c => c.userId === currUserId);
+    if (index >= 0) {
+      connections[index].lastMsgStatus = MessageStatus.SEEN;
+      await DB.from("users").update({ connections: connections }).eq("id", receiverId);
+    }
+  }
+};
+
 export const getMemberColor = async (chatId: string, senderId: string) => {
   try {
     const { data: members, error } = await DB
@@ -47,6 +89,7 @@ export default function ProfileBar({
   lastMsgSenderName,
   lastMsgStatusForGroup,
   unreadCount = 0,
+  onOpenChat,
 }: any) {
   const [currentSideScreen, setCurrentSideScreen] =
     useRecoilState<SideScreenSchema>(sideScreenAtom);
@@ -170,6 +213,16 @@ export default function ProfileBar({
 
     // for mobile view
     setIsSideScreenActive(true);
+
+    // Mark messages as seen in database
+    if (isGroup) {
+      await updateGroupMessagesToSeen(chatId);
+    } else {
+      await updateUserMessagesToSeen(chatId);
+    }
+
+    // Reset unread count
+    if (onOpenChat) onOpenChat();
   };
   return (
     <div
@@ -218,8 +271,8 @@ export default function ProfileBar({
                 <p className="text-sm text-zinc-400">:</p>
               </>
             ))}
-          <p className={`text-sm ${((isGroup ? lastMsgStatusForGroup : lastMsgStatus) === MessageStatus.SENT) ? 'font-bold text-zinc-200' : 'text-zinc-400'}`}>
-            {lastMsg}
+          <p className={`text-xs ${((isGroup ? lastMsgStatusForGroup : lastMsgStatus) === MessageStatus.SENT) ? 'font-bold text-zinc-200' : 'text-zinc-400'}`}>
+            {lastMsg || "No messages yet"}
           </p>
         </div>
       </div>

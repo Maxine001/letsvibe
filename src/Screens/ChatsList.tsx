@@ -20,6 +20,8 @@ export default function ChatsList({ classes }: any) {
   const [isLoading, setIsLoading] = useState(false);
   const [searchString, setSearchString] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<{[key: string]: number}>({});
+  const [userLastMsgs, setUserLastMsgs] = useState<{[key: string]: {msg: string, senderId: string, senderName: string, updatedTime: string}}>({});
+  const [groupLastMsgs, setGroupLastMsgs] = useState<{[key: string]: {msg: string, senderId: string, senderName: string, updatedTime: string}}>({});
 
   const fetchUnreadCounts = async (currUser: string) => {
     const counts: {[key: string]: number} = {};
@@ -54,6 +56,61 @@ export default function ChatsList({ classes }: any) {
     }
 
     setUnreadCounts(counts);
+  };
+
+  const resetUnreadCount = (chatId: string) => {
+    setUnreadCounts(prev => ({ ...prev, [chatId]: 0 }));
+  };
+
+  const fetchUserLastMsgs = async (currUser: string) => {
+    const lastMsgs: {[key: string]: {msg: string, senderId: string, senderName: string, updatedTime: string}} = {};
+
+    for (const u of users) {
+      const chatId = [currUser, u.id].sort().join('-');
+      const { data, error } = await supabase
+        .from("messages")
+        .select("msg, sender_id, sender_name, time")
+        .eq("chat_id", chatId)
+        .order("time", { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        const msg = data[0];
+        lastMsgs[u.id] = {
+          msg: msg.msg,
+          senderId: msg.sender_id,
+          senderName: msg.sender_name,
+          updatedTime: msg.time
+        };
+      }
+    }
+
+    setUserLastMsgs(lastMsgs);
+  };
+
+  const fetchGroupLastMsgs = async () => {
+    const lastMsgs: {[key: string]: {msg: string, senderId: string, senderName: string, updatedTime: string}} = {};
+
+    for (const g of groups) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("msg, sender_id, sender_name, time")
+        .eq("group_id", g.id)
+        .order("time", { ascending: false })
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        const msg = data[0];
+        lastMsgs[g.id] = {
+          msg: msg.msg,
+          senderId: msg.sender_id,
+          senderName: msg.sender_name,
+          updatedTime: msg.time
+        };
+      }
+    }
+
+    setGroupLastMsgs(lastMsgs);
   };
 
   useEffect(() => {
@@ -199,6 +256,7 @@ const fetchUsersAndCurrentUser = async () => {
   useEffect(() => {
     if (currentUser && (groups.length > 0 || users.length > 0)) {
       fetchUnreadCounts(currentUser.id);
+      fetchUserLastMsgs(currentUser.id);
     }
   }, [groups, users, currentUser]);
 
@@ -265,38 +323,42 @@ const fetchUsersAndCurrentUser = async () => {
             <p className="ml-1">Groups</p>
           </div>
         )}
-        {filteredGroups().map((g, i) => (
-          <ProfileBar
-            key={i}
-            isGroup={true}
-            id={g.id}
-            chatId={g.id}
-            imageUrl={g.groupImgUrl}
-            name={g.name}
-            status=""
-            lastMsgStatus={
-              g.members[
-                g.members.findIndex(
-                  (m) =>
-                    m.userId ==
-                    (window.localStorage.getItem("chatapp-user-id") as string)
-                )
-              ].lastMsgStatus
-            }
-            lastMsgStatusForGroup={(() => {
-              for (let m of g.members) {
-                if (m.lastMsgStatus != MessageStatus.SEEN)
-                  return MessageStatus.SENT;
+        {filteredGroups().map((g, i) => {
+          const lastMsgData = groupLastMsgs[g.id];
+          return (
+            <ProfileBar
+              key={i}
+              isGroup={true}
+              id={g.id}
+              chatId={g.id}
+              imageUrl={g.groupImgUrl}
+              name={g.name}
+              status=""
+              lastMsgStatus={
+                g.members[
+                  g.members.findIndex(
+                    (m) =>
+                      m.userId ==
+                      (window.localStorage.getItem("chatapp-user-id") as string)
+                  )
+                ].lastMsgStatus
               }
-              return MessageStatus.SEEN;
-            })()}
-            lastMsg={g.lastMessage}
-            lastUpdatedTime={g.lastUpdatedTime}
-            lastMsgSenderId={g.lastMsgSenderId}
-            lastMsgSenderName={g.lastMsgSenderName}
-            unreadCount={unreadCounts[g.id] || 0}
-          />
-        ))}
+              lastMsgStatusForGroup={(() => {
+                for (let m of g.members) {
+                  if (m.lastMsgStatus != MessageStatus.SEEN)
+                    return MessageStatus.SENT;
+                }
+                return MessageStatus.SEEN;
+              })()}
+              lastMsg={lastMsgData ? lastMsgData.msg : (g.lastMessage || "")}
+              lastUpdatedTime={lastMsgData ? lastMsgData.updatedTime : (g.lastUpdatedTime || "")}
+              lastMsgSenderId={lastMsgData ? lastMsgData.senderId : (g.lastMsgSenderId || "")}
+              lastMsgSenderName={lastMsgData ? lastMsgData.senderName : (g.lastMsgSenderName || "")}
+              unreadCount={unreadCounts[g.id] || 0}
+              onOpenChat={() => resetUnreadCount(g.id)}
+            />
+          );
+        })}
         {users.length > 0 && (
           <div className="border-white border-b-2 mx-5 opacity-50 text-lg">
             <p className="ml-1">Users</p>
@@ -307,6 +369,7 @@ const fetchUsersAndCurrentUser = async () => {
             (c) => c.userId == u.id
           );
           const chatId = [currentUser.id, u.id].sort().join('-');
+          const lastMsgData = userLastMsgs[u.id];
           return (
             <ProfileBar
               key={i}
@@ -318,11 +381,12 @@ const fetchUsersAndCurrentUser = async () => {
               status={u.status}
               isOnline={u.isOnline}
               lastMsgStatus={connection ? connection.lastMsgStatus : MessageStatus.SEEN}
-              lastMsg={connection ? connection.lastMessage : ""}
-              lastUpdatedTime={connection ? connection.lastUpdatedTime : ""}
-              lastMsgSenderId={connection ? connection.lastMsgSenderId : ""}
-              lastMsgSenderName={connection ? connection.lastMsgSenderName : ""}
+              lastMsg={connection ? connection.lastMessage : (lastMsgData ? lastMsgData.msg : "")}
+              lastUpdatedTime={connection ? connection.lastUpdatedTime : (lastMsgData ? lastMsgData.updatedTime : "")}
+              lastMsgSenderId={connection ? connection.lastMsgSenderId : (lastMsgData ? lastMsgData.senderId : "")}
+              lastMsgSenderName={connection ? connection.lastMsgSenderName : (lastMsgData ? lastMsgData.senderName : "")}
               unreadCount={unreadCounts[chatId] || 0}
+              onOpenChat={() => resetUnreadCount(chatId)}
             />
           );
         })}

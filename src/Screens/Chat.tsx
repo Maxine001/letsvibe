@@ -403,7 +403,7 @@ export default function Chat({ classes }: { classes: string }) {
               )
             );
 
-            // For group chats, update group members' last_msg_status
+            // For group chats, update group members' last_msg_status and groups table
             if (currentSideScreen.isGroup) {
               try {
                 // Query group_members table
@@ -434,8 +434,24 @@ export default function Chat({ classes }: { classes: string }) {
 
                   await Promise.allSettled(updatePromises); // Use allSettled to prevent one failure from stopping others
                 }
+
+                // Update groups table with last message info
+                const { error: groupUpdateError } = await DB
+                  .from("groups")
+                  .update({
+                    last_message: msg.msg,
+                    last_updated: new Date().toISOString(),
+                    last_updated_time: new Date().toISOString(),
+                    last_msg_sender_id: msg.senderId,
+                    last_msg_sender_name: msg.senderName
+                  })
+                  .eq("id", currentSideScreen.listId);
+
+                if (groupUpdateError) {
+                  console.error("Error updating groups table with last message", groupUpdateError);
+                }
               } catch (e) {
-                console.error("Error updating group members after message sent", e);
+                console.error("Error updating group members and groups table after message sent", e);
               }
             }
 
