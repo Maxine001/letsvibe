@@ -480,7 +480,7 @@ export default function Chat({ classes }: { classes: string }) {
       setList((l) => [...l, newMsg]);
 
       // upload file and set url from blob to storage
-      const { data, error } = await DBStorage.from(STORAGE_BUCKET).upload("Files/" + fileDetails.name, file);
+      const { error } = await DBStorage.from(STORAGE_BUCKET).upload("Files/" + fileDetails.name, file);
       if (error) throw error;
       const { data: { publicUrl } } = DBStorage.from(STORAGE_BUCKET).getPublicUrl("Files/" + fileDetails.name);
       const fileUrl = publicUrl;

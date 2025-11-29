@@ -1,6 +1,5 @@
 import { DB } from "../supabase/Supabase";
 import { RealtimeChannel } from "@supabase/supabase-js";
-import { Room } from "./types";
 
 export const getUniqueID = () => {
   const date = new Date();
