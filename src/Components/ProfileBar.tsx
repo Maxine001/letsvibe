@@ -6,7 +6,7 @@ import {
   sideScreenAtom,
 } from "../atoms/atom";
 import { GroupMember, MessageStatus, SideScreenSchema, UserConnection } from "./types";
-import { getUniqueID } from "./Utils";
+import { getUniqueID, formatMessageTime } from "./Utils";
 import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 // import notificationSound from "../assets/notification.mp3";
@@ -87,6 +87,7 @@ export default function ProfileBar({
   lastMsgSenderId,
   lastMsgSenderName,
   lastMsgStatusForGroup,
+  lastUpdatedTime,
   unreadCount = 0,
   onOpenChat,
 }: any) {
@@ -225,7 +226,7 @@ export default function ProfileBar({
   };
   return (
     <div
-      className={`flex gap-3 justify-left items-center hover:bg-secondary m-3 rounded-xl relative ${currentSideScreen.onCall ? "cursor-not-allowed": "cursor-pointer"}`}
+      className={`flex gap-3 justify-left items-center hover:bg-secondary m-3 rounded-xl ${currentSideScreen.onCall ? "cursor-not-allowed": "cursor-pointer"}`}
       onClick={()=>{
         if(!currentSideScreen.onCall) openChat();
       }}
@@ -246,33 +247,49 @@ export default function ProfileBar({
             </div>
           )}
         </div>
-        <div className="flex gap-1 items-center">
-          {lastMsgSenderId ==
-            (window.localStorage.getItem("chatapp-user-id") as string) &&
-            (isGroup ? (
-              <StatusIndicator status={lastMsgStatusForGroup} />
-            ) : (
-              <StatusIndicator status={lastMsgStatus} />
-            ))}
-          {isGroup &&
-            lastMsg &&
-            (lastMsgSenderId !=
-            (window.localStorage.getItem("chatapp-user-id") as string) ? (
-              <>
-                <p className="text-sm font-bold" style={{ color: color }}>
-                  {lastMsgSenderName}
-                </p>
-                <p className="text-sm text-zinc-400">:</p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-bold text-zinc-400">You</p>
-                <p className="text-sm text-zinc-400">:</p>
-              </>
-            ))}
-          <p className={`text-xs ${((isGroup ? lastMsgStatusForGroup : lastMsgStatus) === MessageStatus.SENT) ? 'font-bold text-zinc-200' : 'text-zinc-400'}`}>
-            {lastMsg || "No messages yet"}
-          </p>
+        <div className="flex gap-1 items-center justify-between w-full">
+          <div className="flex gap-1 items-center flex-1 min-w-0">
+            {lastMsgSenderId ==
+              (window.localStorage.getItem("chatapp-user-id") as string) &&
+              (isGroup ? (
+                <StatusIndicator status={lastMsgStatusForGroup} />
+              ) : (
+                <StatusIndicator status={lastMsgStatus} />
+              ))}
+            {isGroup &&
+              lastMsg &&
+              (lastMsgSenderId !=
+              (window.localStorage.getItem("chatapp-user-id") as string) ? (
+                <>
+                  <p className="text-sm font-bold" style={{ color: color }}>
+                    {lastMsgSenderName}
+                  </p>
+                  <p className="text-sm text-zinc-400">:</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-zinc-400">You</p>
+                  <p className="text-sm text-zinc-400">:</p>
+                </>
+              ))}
+            <p className={`text-xs truncate ${((isGroup ? lastMsgStatusForGroup : lastMsgStatus) === MessageStatus.SENT) ? 'font-bold text-zinc-200' : 'text-zinc-400'}`}>
+              {lastMsg || "No messages yet"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {lastUpdatedTime && (
+              <p className="text-xs text-zinc-400">
+                {formatMessageTime(lastUpdatedTime)}
+              </p>
+            )}
+            {!isGroup && isOnline && <div className="h-3 w-3 bg-green-500 rounded-full"></div>}
+            {currentSideScreen.listId !== chatId &&
+              lastMsgSenderId !==
+                (window.localStorage.getItem("chatapp-user-id") as string) &&
+              lastMsgStatus === MessageStatus.SENT && (
+                <div className="h-3 w-3 bg-primary rounded-full"></div>
+              )}
+          </div>
         </div>
       </div>
 

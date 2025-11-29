@@ -26,6 +26,13 @@ export const getCurrentTime = () => {
   return time;
 };
 
+export const formatMessageTime = (isoString: string) => {
+  const date = new Date(isoString);
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
 export function generateRandomColor(transparency = 1) {
   // Generate random values for red, green, and blue channels
   const red = Math.floor(Math.random() * 256); // Random value between 0 and 255

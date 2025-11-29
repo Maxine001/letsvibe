@@ -6,7 +6,7 @@ import { FileType, MessageStatus } from "./types";
 import { DB } from "../supabase/Supabase";
 import { useEffect, useState } from "react";
 import fileIcon from "../assets/file.png";
-import { downlaodFile } from "./Utils";
+import { downlaodFile, formatMessageTime } from "./Utils";
 
 function ClockIcon() {
   return <img src={clockIcon} className="h-3" />;
@@ -163,7 +163,7 @@ export default function Message({
             )))}
         <p className="text-md">{msgText}</p>
         <div className="flex justify-end items-center text-xs">
-          <p className="text-xs text-zinc-300 font-thin pr-1">{time}</p>
+          <p className="text-xs text-zinc-300 font-thin pr-1">{formatMessageTime(time)}</p>
           {isSender && <StatusIndicator status={msgStatus} />}
         </div>
       </div>
