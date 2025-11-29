@@ -260,45 +260,25 @@ const fetchUsersAndCurrentUser = async () => {
           </div>
         )}
         {filteredUsers().map((u, i) => {
-          const index = currentUser?.connections.findIndex(
+          const connection = currentUser?.connections.find(
             (c) => c.userId == u.id
           );
-          if (index >= 0) {
-            return (
-              <ProfileBar
-                key={i}
-                isGroup={false}
-                chatId={currentUser.connections[index].chatId}
-                id={u.id}
-                imageUrl={u.profileImgUrl}
-                name={u.name}
-                status={u.status}
-                isOnline={u.isOnline}
-                lastMsgStatus={currentUser.connections[index].lastMsgStatus}
-                lastMsg={currentUser.connections[index].lastMessage}
-                lastUpdatedTime={currentUser.connections[index].lastUpdatedTime}
-                lastMsgSenderId={currentUser.connections[index].lastMsgSenderId}
-                lastMsgSenderName={
-                  currentUser.connections[index].lastMsgSenderName
-                }
-              />
-            );
-          }
+          const chatId = [currentUser.id, u.id].sort().join('-');
           return (
             <ProfileBar
               key={i}
               isGroup={false}
-              chatId={null}
+              chatId={chatId}
               id={u.id}
               imageUrl={u.profileImgUrl}
               name={u.name}
               status={u.status}
               isOnline={u.isOnline}
-              lastMsgStatus={MessageStatus.SEEN}
-              lastMsg={""}
-              lastUpdatedTime={""}
-              lastMsgSenderId={""}
-              lastMsgSenderName={""}
+              lastMsgStatus={connection ? connection.lastMsgStatus : MessageStatus.SEEN}
+              lastMsg={connection ? connection.lastMessage : ""}
+              lastUpdatedTime={connection ? connection.lastUpdatedTime : ""}
+              lastMsgSenderId={connection ? connection.lastMsgSenderId : ""}
+              lastMsgSenderName={connection ? connection.lastMsgSenderName : ""}
             />
           );
         })}

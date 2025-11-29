@@ -333,11 +333,12 @@ export default function Chat({ classes }: { classes: string }) {
             console.error("Error checking chat existence:", chatError);
           } else if (!existingChat) {
             // Insert the chat for private conversation
+            const receiverId = msg.chat_id.split('-').find(id => id !== msg.senderId);
             const { error: insertChatError } = await DB
               .from('chats')
               .insert([{
                 id: msg.chat_id,
-                members: [msg.senderId, msg.chat_id]
+                members: [msg.senderId, receiverId]
               }]);
 
             if (insertChatError) {
@@ -435,6 +436,74 @@ export default function Chat({ classes }: { classes: string }) {
                 }
               } catch (e) {
                 console.error("Error updating group members after message sent", e);
+              }
+            }
+
+            // For private chats, update connections for both users
+            if (!currentSideScreen.isGroup) {
+              const receiverId = currentSideScreen.listId.split('-').find(id => id !== window.localStorage.getItem("chatapp-user-id"));
+              const senderId = window.localStorage.getItem("chatapp-user-id");
+
+              // Update sender's connections
+              const { data: senderData, error: senderError } = await DB
+                .from('users')
+                .select('connections')
+                .eq('id', senderId)
+                .maybeSingle();
+
+              if (!senderError && senderData) {
+                let connections = senderData.connections || [];
+                const index = connections.findIndex(c => c.userId === receiverId);
+                const updateData = {
+                  userId: receiverId,
+                  chatId: currentSideScreen.listId,
+                  lastMessage: msg.msg,
+                  lastUpdated: new Date().toISOString(),
+                  lastUpdatedTime: new Date().toISOString(),
+                  lastMsgSenderId: msg.senderId,
+                  lastMsgSenderName: msg.senderName,
+                  lastMsgStatus: MessageStatus.SENT
+                };
+                if (index >= 0) {
+                  connections[index] = { ...connections[index], ...updateData };
+                } else {
+                  connections.push(updateData);
+                }
+                await DB
+                  .from('users')
+                  .update({ connections: connections })
+                  .eq('id', senderId);
+              }
+
+              // Update receiver's connections
+              const { data: receiverData, error: receiverError } = await DB
+                .from('users')
+                .select('connections')
+                .eq('id', receiverId)
+                .maybeSingle();
+
+              if (!receiverError && receiverData) {
+                let connections = receiverData.connections || [];
+                const index = connections.findIndex(c => c.userId === senderId);
+                const updateData = {
+                  userId: senderId,
+                  chatId: currentSideScreen.listId,
+                  lastMessage: msg.msg,
+                  lastUpdated: new Date().toISOString(),
+                  lastUpdatedTime: new Date().toISOString(),
+                  lastMsgSenderId: msg.senderId,
+                  lastMsgSenderName: msg.senderName,
+                  lastMsgStatus: MessageStatus.SENT
+                };
+                if (index >= 0) {
+                  connections[index] = { ...connections[index], ...updateData };
+                } else {
+                  connections.push(updateData);
+                }
+                await DB
+                  .from('users')
+                  .update({ connections: connections })
+                  .eq('id', receiverId);
               }
             }
           }
