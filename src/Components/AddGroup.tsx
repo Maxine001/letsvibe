@@ -9,7 +9,7 @@ import { AddPhoto, Photo } from "./AddUser";
 import { useEffect, useState } from "react";
 import { globalLoaderAtom } from "../atoms/atom";
 import { useSetRecoilState } from "recoil";
-import supabase from "../supabase/Supabase";
+import { DB as supabase, GROUP_STORAGE_BUCKET } from "../supabase/Supabase";
 import { Group, GroupMember, MessageStatus, User } from "./types";
 import {
   cropPhoto,
@@ -78,19 +78,21 @@ export default function AddGroup({ onClose }: any) {
       if (photo) {
         const fileExt = photo.name.split('.').pop();
         const fileName = `${groupname}-${Date.now()}.${fileExt}`;
-        const filePath = `Group_Images/${fileName}`;
+        const filePath = `group_images/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('public')
+          .from(GROUP_STORAGE_BUCKET)
           .upload(filePath, photo);
-        
+
         if (uploadError) {
           throw uploadError;
         }
 
-        const { publicURL, error: urlError } = supabase.storage
-          .from('public')
+        const { data } = supabase.storage
+          .from(GROUP_STORAGE_BUCKET)
           .getPublicUrl(filePath);
+
+        const { publicURL, error: urlError } = data;
         
         if (urlError) {
           throw urlError;

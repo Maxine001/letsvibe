@@ -147,3 +147,25 @@ ON ice_candidates
 FOR DELETE
 TO public
 USING (true);
+
+-- Storage bucket policies for profile_image bucket
+-- Allow public users to upload profile images
+CREATE POLICY "Allow public users to upload profile images" ON storage.objects
+FOR INSERT TO public
+WITH CHECK (bucket_id = 'profile_image');
+
+-- Allow public access to profile images
+CREATE POLICY "Allow public access to profile images" ON storage.objects
+FOR SELECT TO public
+USING (bucket_id = 'profile_image');
+
+-- Storage bucket policies for group_images bucket
+-- Allow public users to upload group images
+CREATE POLICY "Allow public users to upload group images" ON storage.objects
+FOR INSERT TO public
+WITH CHECK (bucket_id = 'group_images');
+
+-- Allow public access to group images
+CREATE POLICY "Allow public access to group images" ON storage.objects
+FOR SELECT TO public
+USING (bucket_id = 'group_images');

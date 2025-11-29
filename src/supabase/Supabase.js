@@ -7,6 +7,10 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 const storageBucketName = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'profile_image'
 export const STORAGE_BUCKET = storageBucketName
 
+// Bucket for group images
+const groupStorageBucketName = import.meta.env.VITE_SUPABASE_GROUP_STORAGE_BUCKET || 'group_images'
+export const GROUP_STORAGE_BUCKET = groupStorageBucketName
+
 console.log("Current Supabase STORAGE_BUCKET:", STORAGE_BUCKET);
 
 // Create a single supabase client for interacting with your database

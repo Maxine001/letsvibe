@@ -3,7 +3,7 @@ import Input from "../Components/Input";
 import AddGroup from "../Components/AddGroup";
 import { useEffect, useState } from "react";
 import { PlusIcon, UserGroupIcon, UserCircleIcon } from "@heroicons/react/20/solid";
-import supabase from "../supabase/Supabase";
+import { DB as supabase } from "../supabase/Supabase";
 import {
   Group,
   MessageStatus,

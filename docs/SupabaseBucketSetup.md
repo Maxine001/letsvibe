@@ -6,7 +6,7 @@ This document provides guidance on verifying and correcting the Supabase storage
 
 ## Background
 
-The project uses Supabase Storage to store user profile images. The name of the storage bucket is configured by the environment variable `VITE_SUPABASE_STORAGE_BUCKET`.
+The project uses Supabase Storage to store user profile images and group images. The bucket names are configured by the environment variables `VITE_SUPABASE_STORAGE_BUCKET` for user profiles and `VITE_SUPABASE_GROUP_STORAGE_BUCKET` for group images.
 
 If this environment variable is not set or does not point to an existing bucket, the app will raise an error:  
 `StorageApiError: Bucket not found`.
@@ -18,13 +18,14 @@ If this environment variable is not set or does not point to an existing bucket,
 ### 1. Check Environment Variable
 
 - Open the `.env` file in the project root or verify environment variables in your deployment environment.
-- Check if the variable `VITE_SUPABASE_STORAGE_BUCKET` is set.
-- If not set, the project defaults to `public`. You can either create a bucket named `public` in Supabase or set the variable to an existing bucket's name.
+- Check if the variables `VITE_SUPABASE_STORAGE_BUCKET` and `VITE_SUPABASE_GROUP_STORAGE_BUCKET` are set.
+- If not set, the project defaults to `profile_image` for user profiles and `group_images` for group images. Create these buckets in Supabase or set the variables to existing bucket names.
 
-Example `.env` setting:
+Example `.env` settings:
 
 ```
-VITE_SUPABASE_STORAGE_BUCKET=your-bucket-name
+VITE_SUPABASE_STORAGE_BUCKET=profile_image
+VITE_SUPABASE_GROUP_STORAGE_BUCKET=group_images
 ```
 
 ### 2. Verify Bucket Existence in Supabase
@@ -60,6 +61,38 @@ Fixing the "Bucket not found" error involves:
 
 ---
 
+## Storage Bucket Policies
+
+Since your app doesn't use authentication and allows public access, use these policies for the storage buckets:
+
+### For Group Images Bucket (`group_images`):
+
+```sql
+-- Allow public users to upload group images
+CREATE POLICY "Allow public users to upload group images" ON storage.objects
+FOR INSERT TO public
+WITH CHECK (bucket_id = 'group_images');
+
+-- Allow public access to group images
+CREATE POLICY "Allow public access to group images" ON storage.objects
+FOR SELECT TO public
+USING (bucket_id = 'group_images');
+```
+
+### For User Profile Images Bucket (`profile_image`):
+
+```sql
+-- Allow public users to upload profile images
+CREATE POLICY "Allow public users to upload profile images" ON storage.objects
+FOR INSERT TO public
+WITH CHECK (bucket_id = 'profile_image');
+
+-- Allow public access to profile images
+CREATE POLICY "Allow public access to profile images" ON storage.objects
+FOR SELECT TO public
+USING (bucket_id = 'profile_image');
+```
+
 ## Additional Setup: Row Level Security (RLS) Policies for the Users Table
 
 If you encounter errors like "new row violates row-level security policy" during user insertion, it means your 'users' table has RLS enabled but lacks the necessary policies for allowing insert operations.
@@ -80,10 +113,10 @@ ON users
 FOR SELECT
 USING (true);
 
-CREATE POLICY "Allow authenticated users to insert"
+CREATE POLICY "Allow public users to insert"
 ON users
 FOR INSERT
-TO authenticated
+TO public
 WITH CHECK (true);
 ```
 
